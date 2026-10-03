@@ -1,0 +1,2318 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lingua Field — Aprendizaje por contexto</title>
+<meta name="theme-color" content="#1F6F5C">
+<meta name="description" content="Lingua Field: aprende idiomas por contexto, offline.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lingua Field">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EEF1EC;
+  --paper-alt:#E3E8DD;
+  --paper-deep:#DDE3D5;
+  --ink:#1F2D28;
+  --ink-soft:#4A5750;
+  --ink-faint:#7C8880;
+  --teal:#1F6F5C;
+  --teal-soft:#DCEAE4;
+  --rust:#B4502A;
+  --rust-soft:#F4E1D6;
+  --indigo:#4B4E9E;
+  --indigo-soft:#E4E4F4;
+  --gold:#B8862F;
+  --gold-soft:#F1E4C7;
+  --line:#C7CFC0;
+  --shadow: 0 1px 2px rgba(31,45,40,.06), 0 6px 20px rgba(31,45,40,.06);
+  --radius:10px;
+  --font-display:"Fraunces", serif;
+  --font-body:"IBM Plex Sans", system-ui, sans-serif;
+  --font-mono:"IBM Plex Mono", monospace;
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--font-body);
+  font-size:15px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:var(--font-display);font-weight:600;color:var(--ink);margin:0 0 .4em;}
+h1{font-size:1.9rem;}
+h2{font-size:1.35rem;}
+h3{font-size:1.05rem;}
+p{margin:0 0 .8em;}
+a{color:var(--indigo);}
+button{font-family:var(--font-body);cursor:pointer;}
+::selection{background:var(--gold-soft);}
+:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important;}}
+
+#root{max-width:1040px;margin:0 auto;padding:0 20px 80px;}
+#topnav{
+  display:flex;align-items:center;gap:18px;
+  padding:16px 0 10px;
+  border-bottom:1px solid var(--line);
+  margin-bottom:22px;
+  flex-wrap:wrap;
+}
+.brand{display:flex;align-items:baseline;gap:8px;margin-right:auto;}
+.brand-mark{font-family:var(--font-display);font-style:italic;font-weight:600;font-size:1.35rem;color:var(--teal);}
+.brand-sub{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.06em;color:var(--ink-faint);text-transform:uppercase;}
+.navlinks{display:flex;gap:2px;flex-wrap:wrap;}
+.navlink{
+  font-family:var(--font-body);font-size:.86rem;font-weight:500;color:var(--ink-soft);
+  padding:7px 11px;border-radius:7px;text-decoration:none;position:relative;
+}
+.navlink:hover{background:var(--paper-alt);}
+.navlink.active{background:var(--ink);color:var(--paper);}
+.navbadge{
+  display:inline-block;min-width:16px;padding:0 4px;margin-left:5px;border-radius:8px;
+  background:var(--rust);color:#fff;font-family:var(--font-mono);font-size:.65rem;line-height:16px;text-align:center;
+}
+.navsearch{
+  background:var(--paper-alt);border:1px solid var(--line);border-radius:7px;padding:6px 10px;
+  font-size:.82rem;color:var(--ink-soft);width:150px;font-family:var(--font-body);
+}
+
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);}
+.card + .card{margin-top:14px;}
+.row{display:flex;gap:14px;flex-wrap:wrap;}
+.col{flex:1;min-width:220px;}
+.muted{color:var(--ink-soft);}
+.faint{color:var(--ink-faint);font-size:.82rem;}
+.eyebrow{font-family:var(--font-mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:6px;display:block;}
+.pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:.72rem;font-family:var(--font-mono);border:1px solid var(--line);color:var(--ink-soft);background:var(--paper-alt);}
+.pill.teal{background:var(--teal-soft);color:var(--teal);border-color:transparent;}
+.pill.rust{background:var(--rust-soft);color:var(--rust);border-color:transparent;}
+.pill.indigo{background:var(--indigo-soft);color:var(--indigo);border-color:transparent;}
+.pill.gold{background:var(--gold-soft);color:var(--gold);border-color:transparent;}
+
+.btn{
+  border:1px solid var(--ink);background:var(--ink);color:var(--paper);
+  padding:9px 16px;border-radius:7px;font-size:.86rem;font-weight:500;
+}
+.btn:hover{background:#132019;}
+.btn.secondary{background:transparent;color:var(--ink);border-color:var(--line);}
+.btn.secondary:hover{background:var(--paper-alt);}
+.btn.ghost{background:transparent;color:var(--ink-soft);border-color:transparent;padding:6px 8px;}
+.btn.ghost:hover{color:var(--ink);}
+.btn.danger{background:var(--rust);border-color:var(--rust);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+
+/* ---- Concept card / notebook styling ---- */
+.concept{
+  border:1px solid var(--line);border-radius:var(--radius);background:#fff;
+  padding:16px 18px 16px 46px;position:relative;box-shadow:var(--shadow);cursor:pointer;
+}
+.concept + .concept{margin-top:10px;}
+.concept-tab{
+  position:absolute;left:-1px;top:14px;bottom:14px;width:28px;
+  display:flex;align-items:center;justify-content:center;
+  writing-mode:vertical-rl;text-orientation:mixed;
+  font-family:var(--font-mono);font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+  color:#fff;border-radius:0 6px 6px 0;
+}
+.concept-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+.concept-expr{
+  font-family:var(--font-display);font-weight:600;font-size:1.25rem;
+  border-bottom:3px solid var(--gold-soft);padding-bottom:1px;
+}
+.concept-ipa{font-family:var(--font-mono);color:var(--ink-faint);font-size:.82rem;}
+.concept-meaning{margin-top:6px;}
+.mastery-track{height:5px;border-radius:4px;background:var(--paper-deep);margin-top:10px;overflow:hidden;}
+.mastery-fill{height:100%;background:var(--teal);}
+.tagset{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+
+/* Type colors for tabs/pills */
+.t-phrasal_verb{background:var(--teal);} .t-idiom{background:var(--rust);}
+.t-collocation{background:var(--indigo);} .t-vocabulary{background:#5B6B60;}
+.t-expression{background:var(--gold);} .t-grammar_pattern{background:#7A5CA8;}
+.t-sentence_pattern{background:#7A5CA8;}
+
+/* Dashboard */
+.hero{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:16px;}
+.stat-block{text-align:center;flex:1;min-width:90px;}
+.stat-num{font-family:var(--font-display);font-size:1.7rem;font-weight:600;}
+.stat-label{font-size:.72rem;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
+
+/* Loop diagram */
+.loop-wrap{display:flex;justify-content:center;margin:10px 0;}
+
+/* Exercise view */
+.exercise-shell{max-width:640px;margin:0 auto;}
+.prompt-text{font-family:var(--font-display);font-size:1.3rem;line-height:1.5;margin:10px 0 18px;}
+.blank-input{
+  font-family:var(--font-mono);font-size:1rem;border:none;border-bottom:2px solid var(--ink);
+  background:transparent;padding:2px 4px;width:200px;color:var(--indigo);
+}
+.blank-input:focus{outline:none;border-color:var(--indigo);}
+.option-list{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+.option{
+  text-align:left;border:1px solid var(--line);background:#fff;padding:11px 14px;border-radius:8px;
+  font-size:.92rem;font-family:var(--font-body);
+}
+.option:hover{border-color:var(--indigo);}
+.option.selected{border-color:var(--indigo);background:var(--indigo-soft);}
+.option.correct{border-color:var(--teal);background:var(--teal-soft);}
+.option.incorrect{border-color:var(--rust);background:var(--rust-soft);}
+.word-chip{display:inline-block;border:1px solid var(--line);background:#fff;padding:6px 10px;border-radius:6px;margin:3px;font-size:.9rem;}
+.word-chip.used{opacity:.35;pointer-events:none;}
+.word-chip.answer-chip{cursor:grab;touch-action:none;user-select:none;}
+.word-chip.answer-chip.dragging{opacity:.5;cursor:grabbing;border-color:var(--indigo);box-shadow:var(--shadow);}
+.word-bank, .word-answer{min-height:44px;padding:6px;border:1px dashed var(--line);border-radius:8px;margin-bottom:10px;}
+.textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:var(--font-body);font-size:.92rem;}
+.speak-btn{
+  background:var(--teal-soft);color:var(--teal);border:none;border-radius:50%;
+  width:52px;height:52px;font-size:1.3rem;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;
+}
+.speak-btn:hover{background:var(--teal);color:#fff;}
+.record-widget{display:inline-flex;align-items:center;gap:4px;}
+.mic-btn{
+  background:var(--rust-soft);color:var(--rust);border:none;border-radius:50%;
+  width:36px;height:36px;font-size:1rem;display:inline-flex;align-items:center;justify-content:center;flex:none;
+}
+.mic-btn:hover{background:var(--rust);color:#fff;}
+.mic-btn.recording{background:var(--rust);color:#fff;animation:mic-pulse 1s ease-in-out infinite;}
+@keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(180,80,42,.5);}50%{box-shadow:0 0 0 6px rgba(180,80,42,0);}}
+.play-btn{
+  background:var(--indigo-soft);color:var(--indigo);border:none;border-radius:50%;
+  width:36px;height:36px;font-size:.9rem;display:inline-flex;align-items:center;justify-content:center;flex:none;
+}
+.play-btn:hover{background:var(--indigo);color:#fff;}
+.play-btn.hidden{display:none;}
+.feedback-banner{padding:12px 14px;border-radius:8px;margin-top:16px;font-size:.9rem;}
+.feedback-banner.ok{background:var(--teal-soft);color:var(--teal);}
+.feedback-banner.bad{background:var(--rust-soft);color:var(--rust);}
+
+/* forms */
+label{display:block;font-size:.8rem;font-weight:600;margin:12px 0 4px;color:var(--ink-soft);}
+input[type=text],input[type=password],input[type=number],input[type=file],select,textarea{
+  width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-family:var(--font-body);font-size:.9rem;background:#fff;
+}
+.field-hint{font-size:.75rem;color:var(--ink-faint);margin-top:3px;}
+.modal-backdrop{position:fixed;inset:0;background:rgba(31,45,40,.4);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50;}
+.modal{background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;box-shadow:var(--shadow);}
+.modal-close{float:right;background:none;border:none;font-size:1.1rem;color:var(--ink-faint);}
+
+table{width:100%;border-collapse:collapse;font-size:.88rem;}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);}
+th{color:var(--ink-soft);font-weight:600;font-size:.76rem;text-transform:uppercase;letter-spacing:.03em;}
+
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:8px;font-size:.85rem;
+  box-shadow:var(--shadow);z-index:100;
+}
+.empty-state{text-align:center;padding:40px 20px;color:var(--ink-soft);}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:640px){.grid-2{grid-template-columns:1fr;} .stat-block{min-width:70px;}}
+.checkbox-row{display:flex;align-items:center;gap:8px;margin:8px 0;}
+.checkbox-row input{width:auto;}
+hr.rule{border:none;border-top:1px solid var(--line);margin:18px 0;}
+
+/* AI explanations */
+.ai-box{margin-top:18px;}
+.ai-box > summary{cursor:pointer;color:var(--indigo);font-weight:600;font-size:.88rem;padding:6px 0;}
+.ai-body{background:var(--indigo-soft);border-radius:8px;padding:12px 14px;margin-top:8px;font-size:.9rem;}
+.ai-body h4{margin:12px 0 2px;font-size:.72rem;font-family:var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);}
+.ai-body h4:first-child{margin-top:0;}
+.ai-body p{margin:0;}
+.ai-body ul{margin:2px 0 0;padding-left:18px;}
+.ai-error{color:var(--rust);font-size:.82rem;margin-top:6px;}
+</style>
+</head>
+<body>
+<div id="root">
+  <nav id="topnav"></nav>
+  <main id="view"></main>
+</div>
+<script>
+(async function(){
+"use strict";
+
+/* Captured early: the browser may fire this before the rest of the app has booted. */
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', e=>{
+  e.preventDefault(); deferredInstall = e;
+  const b = document.getElementById('installBtn'); if(b) b.style.display = '';
+});
+window.addEventListener('appinstalled', ()=>{ deferredInstall = null; const b = document.getElementById('installBtn'); if(b) b.style.display = 'none'; });
+
+/* =========================================================
+   UTILS
+   ========================================================= */
+const Utils = {
+  uid(prefix){ return (prefix||'id') + '_' + Math.random().toString(36).slice(2,9); },
+  shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; },
+  sample(arr,n){ return Utils.shuffle(arr).slice(0,n); },
+  clone(o){ return JSON.parse(JSON.stringify(o)); },
+  escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); },
+  normalize(s){ return String(s||'').toLowerCase().trim().replace(/[.!?,;:]+$/,'').replace(/\s+/g,' '); },
+  startOfDay(ts){ const d=new Date(ts); d.setHours(0,0,0,0); return d.getTime(); },
+  daysFromNow(days){ return Date.now() + days*24*60*60*1000; },
+  fmtDate(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleDateString(undefined,{day:'2-digit',month:'short'}); },
+  fmtDateTime(ts){ const d=new Date(ts); return d.toLocaleString(undefined,{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); },
+  download(filename, text){
+    const blob = new Blob([text], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  },
+  toast(msg){
+    let t = document.getElementById('toast');
+    if(t) t.remove();
+    t = document.createElement('div'); t.id='toast'; t.className='toast'; t.textContent=msg;
+    document.body.appendChild(t);
+    setTimeout(()=>{ t.remove(); }, 2600);
+  }
+};
+
+/* =========================================================
+   STORAGE  (abstraction layer)
+   Primary backend: IndexedDB. The whole store is loaded into memory once at boot
+   (Storage.init), so get() stays synchronous and the rest of the app doesn't change.
+   set() updates memory immediately and writes to IndexedDB in the background (debounced,
+   and flushed when the page is hidden/closed). Fallback: localStorage if IndexedDB fails.
+   ========================================================= */
+const Storage = (function(){
+  const NS = 'langapp:';            // legacy localStorage namespace
+  const DB_NAME = 'lingua-field', STORE = 'kv';
+  const DATA_KEYS = ['concepts','lessons','srs','mistakes','meta','settings','ai'];
+  let mode = 'localstorage';        // 'idb' | 'localstorage'
+  let db = null, timer = null, warned = false;
+  const cache = Object.create(null);
+  const dirty = new Set(), removed = new Set();
+
+  /* ---- IndexedDB helpers ---- */
+  function openDb(){
+    return new Promise((resolve, reject)=>{
+      if(!('indexedDB' in window) || !window.indexedDB) return reject(new Error('IndexedDB unavailable'));
+      let req;
+      try{ req = indexedDB.open(DB_NAME, 1); }catch(e){ return reject(e); }
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE); };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+      req.onblocked = ()=>reject(new Error('IndexedDB blocked'));
+    });
+  }
+  function readAll(){
+    return new Promise((resolve, reject)=>{
+      const out = {};
+      const rq = db.transaction(STORE,'readonly').objectStore(STORE).openCursor();
+      rq.onsuccess = ()=>{ const cur = rq.result; if(cur){ out[cur.key] = cur.value; cur.continue(); } else resolve(out); };
+      rq.onerror = ()=>reject(rq.error);
+    });
+  }
+  function writeMany(entries, deletes){
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction(STORE,'readwrite'), st = tx.objectStore(STORE);
+      entries.forEach(([k,v])=>st.put(v,k));      // put() snapshots the value right now
+      (deletes||[]).forEach(k=>st.delete(k));
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = tx.onabort = ()=>reject(tx.error || new Error('IndexedDB write failed'));
+    });
+  }
+
+  /* ---- one-time migration from the old localStorage data ---- */
+  async function migrateFromLocalStorage(){
+    const found = {};
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.indexOf(NS)===0){
+        try{ found[k.slice(NS.length)] = JSON.parse(localStorage.getItem(k)); }catch(e){}
+      }
+    }
+    const keys = Object.keys(found);
+    if(!keys.length) return;
+    await writeMany(keys.map(k=>[k, found[k]]).concat([['_migration', { at:Date.now(), keys:keys.length }]]));
+    const back = await readAll();
+    const ok = keys.every(k=>JSON.stringify(back[k]) === JSON.stringify(found[k]));
+    if(!ok){
+      await writeMany([], keys.concat(['_migration']));       // undo, leave localStorage untouched
+      throw new Error('Migration verification failed');
+    }
+    keys.forEach(k=>{ cache[k] = back[k]; });
+    cache._migration = back._migration;
+    keys.forEach(k=>localStorage.removeItem(NS+k));            // only after a verified copy
+  }
+
+  async function init(){
+    try{
+      db = await openDb();
+      Object.assign(cache, await readAll());
+      if(!DATA_KEYS.some(k=>k in cache)) await migrateFromLocalStorage();
+      mode = 'idb';
+      window.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flush(); });
+      window.addEventListener('pagehide', flush);
+      if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+    }catch(e){
+      console.warn('IndexedDB not usable, falling back to localStorage:', e);
+      mode = 'localstorage'; db = null;
+    }
+  }
+
+  /* ---- public API (same shape as before) ---- */
+  function get(key, fallback){
+    if(mode==='idb') return key in cache ? cache[key] : fallback;
+    try{
+      const raw = localStorage.getItem(NS+key);
+      return raw==null ? fallback : JSON.parse(raw);
+    }catch(e){ return fallback; }
+  }
+  function set(key, value){
+    if(mode==='idb'){
+      cache[key] = value; dirty.add(key); removed.delete(key);
+      clearTimeout(timer); timer = setTimeout(flush, 250);
+      return true;
+    }
+    try{ localStorage.setItem(NS+key, JSON.stringify(value)); return true; }
+    catch(e){ console.error('Storage error', e); if(!warned){ warned = true; Utils.toast('Storage full: export a backup.'); } return false; }
+  }
+  function remove(key){
+    if(mode==='idb'){ delete cache[key]; dirty.delete(key); removed.add(key); clearTimeout(timer); timer = setTimeout(flush, 250); return; }
+    localStorage.removeItem(NS+key);
+  }
+  function flush(){
+    if(mode!=='idb' || !db) return Promise.resolve();
+    clearTimeout(timer);
+    if(!dirty.size && !removed.size) return Promise.resolve();
+    const entries = Array.from(dirty).map(k=>[k, cache[k]]);
+    const deletes = Array.from(removed);
+    dirty.clear(); removed.clear();
+    return writeMany(entries, deletes).catch(err=>{
+      console.error('Storage write failed', err);
+      entries.forEach(([k])=>dirty.add(k));                    // keep for a later retry
+      if(!warned){ warned = true; Utils.toast('Could not save. Export a backup.'); }
+    });
+  }
+  async function info(){
+    const out = { mode, persisted:null, usage:null, quota:null };
+    try{
+      if(navigator.storage){
+        if(navigator.storage.persisted) out.persisted = await navigator.storage.persisted();
+        if(navigator.storage.estimate){ const e = await navigator.storage.estimate(); out.usage = e.usage; out.quota = e.quota; }
+      }
+    }catch(e){}
+    return out;
+  }
+  return { init, get, set, remove, flush, info, mode:()=>mode };
+})();
+await Storage.init();
+
+/* =========================================================
+   SEED DATA
+   ========================================================= */
+function seedConcepts(){
+  const mk = (o)=>Object.assign({
+    id:o.id, language:'en-US', level:o.level||'B2', translation:'', notes:'', etymology:'',
+    ipa:'', synonyms:[], antonyms:[], related:[], tags:[], commonMistakes:[], patterns:[]
+  }, o);
+
+  return [
+    mk({id:'put_off', type:'phrasal_verb', expression:'put off', translation:'aplazar, posponer', meaning:'To delay or postpone something.',
+      etymology:'"Off" works here as it does in many phrasal verbs of separation — putting something off is like physically pushing it away from you in time, moving it further down the line instead of dealing with it now.',
+      patterns:['put off + noun','put off + verb-ing'],
+      examples:[
+        {text:'I keep putting off my dentist appointment.', blank:'putting off', answers:['putting off']},
+        {text:'The meeting was put off until Friday.', blank:'put off', answers:['put off']},
+        {text:"Don't put off studying until the night before the exam.", blank:'put off', answers:['put off']}
+      ],
+      commonMistakes:[{wrong:'I put off to study.', correct:'I put off studying.'}],
+      synonyms:['postpone','delay','defer'], related:['postpone','delay','defer','procrastinate'],
+      tags:['travel','phrasal-verb','common']}),
+
+    mk({id:'check_in', type:'phrasal_verb', expression:'check in', translation:'registrarse, facturar', meaning:'To register on arrival at a hotel or airport.',
+      etymology:'From 19th-century hospitality and transport records, where staff would literally "check" a guest\u2019s name against a list; "in" marks the moment of entering the system.',
+      patterns:['check in (at/to + place)'],
+      examples:[
+        {text:'We need to check in two hours before the flight.', blank:'check in', answers:['check in']},
+        {text:'She checked in at the front desk.', blank:'checked in', answers:['checked in']}
+      ],
+      commonMistakes:[{wrong:'I checked in the hotel.', correct:'I checked in at the hotel.'}],
+      synonyms:['register'], related:['check out'], tags:['travel','phrasal-verb','common']}),
+
+    mk({id:'check_out', type:'phrasal_verb', expression:'check out', translation:'dejar el hotel; echar un vistazo', meaning:'To leave a hotel after paying the bill; also, to look at something.',
+      etymology:'The mirror image of "check in" — "out" marks exit from the register. The casual "take a look" sense grew later from library usage, where borrowing a book meant it was "checked out" of the building.',
+      patterns:['check out (of + place)'],
+      examples:[
+        {text:'Checkout time is 11 a.m., so we have to check out early.', blank:'check out', answers:['check out']},
+        {text:'You should check out that new restaurant.', blank:'check out', answers:['check out']}
+      ],
+      commonMistakes:[{wrong:'We check out the hotel at 11.', correct:'We check out of the hotel at 11.'}],
+      synonyms:[], related:['check in'], tags:['travel','phrasal-verb','common']}),
+
+    mk({id:'set_off', type:'phrasal_verb', expression:'set off', translation:'ponerse en marcha, partir', meaning:'To begin a journey.',
+      etymology:'A nautical and travel expression from the 18th century: to "set" something in motion "off" from where it currently sits — originally used of ships departing a harbour.',
+      patterns:['set off (for/on + place/trip)'],
+      examples:[
+        {text:'We set off for the airport at dawn.', blank:'set off', answers:['set off']},
+        {text:"Let's set off before the traffic gets bad.", blank:'set off', answers:['set off']}
+      ],
+      commonMistakes:[{wrong:'We set off the airport.', correct:'We set off for the airport.'}],
+      synonyms:['depart','head out'], related:['take off','head off'], tags:['travel','phrasal-verb']}),
+
+    mk({id:'take_off', type:'phrasal_verb', expression:'take off', translation:'despegar; despegar (tener éxito)', meaning:'When a plane leaves the ground; also, to remove clothing or become successful quickly.',
+      etymology:'Coined in early 20th-century aviation, modelled on birds "taking off" from the ground into flight. The figurative "sudden success" sense followed later, borrowing that same image of abrupt, upward motion.',
+      patterns:['take off (intransitive, for planes)'],
+      examples:[
+        {text:'The plane took off twenty minutes late.', blank:'took off', answers:['took off']},
+        {text:'Her career really took off after that interview.', blank:'took off', answers:['took off']}
+      ],
+      commonMistakes:[{wrong:'The plane take off now.', correct:'The plane is taking off now.'}],
+      synonyms:[], related:['set off','land'], tags:['travel','phrasal-verb','common']}),
+
+    mk({id:'get_around', type:'phrasal_verb', expression:'get around', translation:'moverse por un lugar; sortear un problema', meaning:'To travel or move from place to place; to circumvent a problem.',
+      etymology:'Originally purely spatial — moving "around" a place. The figurative sense of dodging a rule or problem extends the same image: going around an obstacle instead of straight through it.',
+      patterns:['get around (+ place)', 'get around + noun (a problem)'],
+      examples:[
+        {text:'It’s easy to get around the city by metro.', blank:'get around', answers:['get around']},
+        {text:'They found a clever way to get around the regulation.', blank:'get around', answers:['get around']}
+      ],
+      commonMistakes:[{wrong:'I get around by the bus.', correct:'I get around by bus.'}],
+      synonyms:['travel around'], related:['get by'], tags:['travel','phrasal-verb']}),
+
+    mk({id:'stop_over', type:'phrasal_verb', expression:'stop over', translation:'hacer escala', meaning:'To break a journey with a short stay somewhere.',
+      etymology:'A 20th-century travel-industry term: you "stop" while "over" (along/on) a longer route, giving rise to the noun "stopover" for a scheduled break between connecting flights.',
+      patterns:['stop over (in + place)'],
+      examples:[
+        {text:'We stopped over in Dubai for six hours.', blank:'stopped over', answers:['stopped over']}
+      ],
+      commonMistakes:[{wrong:'We stop over Dubai.', correct:'We stopped over in Dubai.'}],
+      synonyms:['layover (noun)'], related:['set off'], tags:['travel','phrasal-verb','rare']}),
+
+    mk({id:'come_up_with', type:'phrasal_verb', level:'C1', expression:'come up with', translation:'ocurrírsele (una idea), idear', meaning:'To think of or produce an idea or plan.',
+      etymology:'Literally "come up" (arise, appear) "with" something — as if the idea surfaces alongside the person. Common in informal American English since the 19th century.',
+      patterns:['come up with + noun'],
+      examples:[
+        {text:'She eventually came up with a solution.', blank:'came up with', answers:['came up with']},
+        {text:'We need to come up with a better strategy.', blank:'come up with', answers:['come up with']}
+      ],
+      commonMistakes:[{wrong:'I come up a good idea.', correct:'I came up with a good idea.'}],
+      synonyms:['devise','think up'], related:['put forward'], tags:['business','phrasal-verb','common']}),
+
+    mk({id:'run_into', type:'phrasal_verb', level:'C1', expression:'run into', translation:'encontrarse con alguien; toparse con un problema', meaning:'To meet by chance; to encounter a problem.',
+      etymology:'Extends the literal sense of physically colliding with something ("run into a wall") to unexpectedly colliding with a person or a difficulty — a 19th-century figurative shift.',
+      patterns:['run into + noun'],
+      examples:[
+        {text:'We ran into some unexpected costs.', blank:'ran into', answers:['ran into']},
+        {text:'I ran into an old colleague at the conference.', blank:'ran into', answers:['ran into']}
+      ],
+      commonMistakes:[{wrong:'I run into with him.', correct:'I ran into him.'}],
+      synonyms:['encounter','bump into'], related:['come across'], tags:['business','phrasal-verb']}),
+
+    mk({id:'get_the_ball_rolling', type:'idiom', level:'C1', expression:'get the ball rolling', translation:'poner las cosas en marcha', meaning:'To start something, such as a project or activity.',
+      etymology:'From 19th-century lawn games like bowls and croquet, where play could not begin until someone physically set the ball moving — the image of getting things underway stuck.',
+      patterns:['get the ball rolling (on + noun)'],
+      examples:[
+        {text:"Let's get the ball rolling on the new campaign.", blank:'get the ball rolling', answers:['get the ball rolling']}
+      ],
+      commonMistakes:[{wrong:'Let’s get rolling the ball.', correct:'Let’s get the ball rolling.'}],
+      synonyms:['kick things off'], related:['come up with'], tags:['business','idiom']}),
+
+    mk({id:'think_outside_the_box', type:'idiom', level:'C1', expression:'think outside the box', translation:'pensar de forma creativa, salirse de lo convencional', meaning:'To think creatively, beyond usual or expected patterns.',
+      etymology:'Popularised mid-20th century by the "nine dots" puzzle used in management training, which can only be solved by drawing lines beyond an imaginary bounding box — it became a business cliché by the 1970s–80s.',
+      patterns:['think outside the box'],
+      examples:[
+        {text:'The client wants us to think outside the box for this pitch.', blank:'think outside the box', answers:['think outside the box']}
+      ],
+      commonMistakes:[{wrong:'Think out the box.', correct:'Think outside the box.'}],
+      synonyms:['be innovative'], related:['come up with'], tags:['business','idiom','formal']}),
+
+    mk({id:'touch_base', type:'idiom', level:'C1', expression:'touch base', translation:'ponerse en contacto brevemente', meaning:'To make brief contact or communication with someone.',
+      etymology:'Borrowed from baseball, where a runner must physically touch each base to stay safe or score. Mid-20th-century business English adopted it for a quick, low-stakes check-in.',
+      patterns:['touch base (with + someone)'],
+      examples:[
+        {text:'Let’s touch base next week about the budget.', blank:'touch base', answers:['touch base']}
+      ],
+      commonMistakes:[{wrong:'Let’s touch the base.', correct:'Let’s touch base.'}],
+      synonyms:['check in with'], related:['follow up'], tags:['business','idiom']}),
+
+    mk({id:'meet_a_deadline', type:'collocation', level:'B2', expression:'meet a deadline', translation:'cumplir con un plazo', meaning:'To finish something by the required time.',
+      etymology:'"Deadline" originally named a literal boundary in Civil War-era prison camps that inmates could not cross. Early 20th-century newsrooms and print shops reused it for a time limit that must not be crossed.',
+      patterns:['meet a/the deadline'],
+      examples:[
+        {text:'We worked overtime to meet the deadline.', blank:'meet the deadline', answers:['meet the deadline']}
+      ],
+      commonMistakes:[{wrong:'We arrived to the deadline.', correct:'We met the deadline.'}],
+      synonyms:[], related:['miss a deadline'], tags:['business','collocation','common']}),
+
+    mk({id:'raise_a_concern', type:'collocation', level:'B2', expression:'raise a concern', translation:'plantear una inquietud o preocupación', meaning:'To mention a worry or issue formally.',
+      etymology:'"Raise" in the sense of lifting something up to be seen or heard, the same pattern as "raise a question" or "raise an objection" — a formal collocation established since the 19th century.',
+      patterns:['raise a concern (about + noun)'],
+      examples:[
+        {text:'Several employees raised a concern about the new policy.', blank:'raised a concern', answers:['raised a concern']}
+      ],
+      commonMistakes:[{wrong:'She said a concern.', correct:'She raised a concern.'}],
+      synonyms:['voice a concern'], related:['meet a deadline'], tags:['business','collocation']})
+  ];
+}
+
+function seedLessons(concepts){
+  const travel = concepts.filter(c=>c.tags.includes('travel')).map(c=>c.id);
+  const business = concepts.filter(c=>c.tags.includes('business')).map(c=>c.id);
+  return [
+    { id:'lesson_travel_pv', version:1, language:'en-US', title:'Travel Phrasal Verbs', level:'B2',
+      description:'Essential phrasal verbs for getting through airports, hotels, and trips.',
+      tags:['travel'], prerequisites:[], conceptIds:travel },
+    { id:'lesson_business_idioms', version:1, language:'en-US', title:'Business Idioms & Collocations', level:'C1',
+      description:'Natural expressions for meetings, planning, and everyday office talk.',
+      tags:['business'], prerequisites:[], conceptIds:business }
+  ];
+}
+
+/* =========================================================
+   DATA STORE  (concepts, lessons, srs, mistakes, meta, settings)
+   ========================================================= */
+const Data = (function(){
+  let concepts = Storage.get('concepts', null);
+  let lessons = Storage.get('lessons', null);
+  let srs = Storage.get('srs', {});
+  let mistakes = Storage.get('mistakes', []);
+  let meta = Storage.get('meta', { streak:0, longestStreak:0, lastActiveDate:null, totalStudySeconds:0, sessionsCompleted:0, newPerDay:5 });
+  let settings = Storage.get('settings', { voiceName:null, rate:0.95, pitch:1.0, lang:'en-US' });
+
+  if(!concepts){
+    const seeded = seedConcepts();
+    concepts = {}; seeded.forEach(c=>concepts[c.id]=c);
+    Storage.set('concepts', concepts);
+  }
+  if(!lessons){
+    const seededLessons = seedLessons(Object.values(concepts));
+    lessons = {}; seededLessons.forEach(l=>lessons[l.id]=l);
+    Storage.set('lessons', lessons);
+  }
+  Object.keys(concepts).forEach(id=>{ if(!srs[id]) srs[id]=freshSrs(id); });
+  Storage.set('srs', srs);
+
+  function freshSrs(conceptId){
+    return { conceptId, firstSeen:null, lastReviewed:null, nextReview:Date.now(),
+      interval:0, ease:2.5, repetitions:0, lapses:0, mastery:0, introSeen:false,
+      modalityStats:{ reading:{correct:0,total:0}, listening:{correct:0,total:0}, production:{correct:0,total:0} } };
+  }
+
+  function persistAll(){
+    Storage.set('concepts', concepts); Storage.set('lessons', lessons);
+    Storage.set('srs', srs); Storage.set('mistakes', mistakes);
+    Storage.set('meta', meta); Storage.set('settings', settings);
+  }
+
+  function touchActivity(){
+    const today = Utils.startOfDay(Date.now());
+    const last = meta.lastActiveDate;
+    if(last !== today){
+      const oneDay = 24*60*60*1000;
+      meta.streak = (last === today-oneDay) ? meta.streak+1 : 1;
+      meta.longestStreak = Math.max(meta.longestStreak, meta.streak);
+      meta.lastActiveDate = today;
+      Storage.set('meta', meta);
+    }
+  }
+
+  return {
+    getConcept: id=>concepts[id],
+    allConcepts: ()=>Object.values(concepts),
+    getLesson: id=>lessons[id],
+    allLessons: ()=>Object.values(lessons),
+    getSrs: id=>srs[id] || (srs[id]=freshSrs(id)),
+    allSrs: ()=>srs,
+    freshSrs,
+    addMistake(m){ mistakes.unshift(Object.assign({date:Date.now()}, m)); mistakes = mistakes.slice(0,500); Storage.set('mistakes', mistakes); },
+    allMistakes: ()=>mistakes,
+    meta: ()=>meta, saveMeta(){ Storage.set('meta', meta); },
+    settings: ()=>settings, saveSettings(){ Storage.set('settings', settings); },
+    touchActivity,
+    saveSrs(){ Storage.set('srs', srs); },
+    saveConcepts(){ Storage.set('concepts', concepts); },
+    saveLessons(){ Storage.set('lessons', lessons); },
+    upsertConcept(c){ concepts[c.id]=c; if(!srs[c.id]) srs[c.id]=freshSrs(c.id); Storage.set('concepts', concepts); Storage.set('srs', srs); },
+    upsertLesson(l){ lessons[l.id]=l; Storage.set('lessons', lessons); },
+    persistAll,
+    exportEverything(){
+      return JSON.stringify({ formatVersion:'1.0', exportedAt:new Date().toISOString(),
+        concepts, lessons, srs, mistakes, meta, settings }, null, 2);
+    },
+    exportContent(lessonIds){
+      const ls = (lessonIds||Object.keys(lessons)).map(id=>lessons[id]).filter(Boolean);
+      const cIds = new Set(); ls.forEach(l=>l.conceptIds.forEach(id=>cIds.add(id)));
+      const cs = Array.from(cIds).map(id=>concepts[id]).filter(Boolean);
+      return JSON.stringify({ formatVersion:'1.0', lessons:ls, concepts:cs }, null, 2);
+    },
+    exportProgress(){
+      return JSON.stringify({ formatVersion:'1.0', srs, mistakes, meta }, null, 2);
+    },
+    restoreBackup(obj){
+      if(obj.concepts) concepts = obj.concepts;
+      if(obj.lessons) lessons = obj.lessons;
+      if(obj.srs) srs = obj.srs;
+      if(obj.mistakes) mistakes = obj.mistakes;
+      if(obj.meta) meta = obj.meta;
+      if(obj.settings) settings = obj.settings;
+      persistAll();
+    }
+  };
+})();
+
+/* =========================================================
+   JSON IMPORT / VALIDATION
+   ========================================================= */
+const JSONImporter = {
+  validate(obj){
+    const errors = [];
+    if(typeof obj !== 'object' || obj===null) return ['El archivo no contiene un objeto JSON válido.'];
+    if(!obj.formatVersion) errors.push('Falta el campo "formatVersion".');
+    if(!obj.lesson || typeof obj.lesson!=='object') errors.push('Falta el objeto "lesson".');
+    else{
+      if(!obj.lesson.id) errors.push('lesson.id es obligatorio.');
+      if(!obj.lesson.title) errors.push('lesson.title es obligatorio.');
+      if(!obj.lesson.language) errors.push('lesson.language es obligatorio (ej. "en-US").');
+    }
+    if(!Array.isArray(obj.concepts) || obj.concepts.length===0) errors.push('"concepts" debe ser un array con al menos un elemento.');
+    else{
+      const seen = new Set();
+      obj.concepts.forEach((c,i)=>{
+        if(!c.id) errors.push(`concepts[${i}]: falta "id".`);
+        else if(seen.has(c.id)) errors.push(`concepts[${i}]: id duplicado "${c.id}".`);
+        else seen.add(c.id);
+        if(!c.expression) errors.push(`concepts[${i}] (${c.id||'?'}): falta "expression".`);
+        if(!c.meaning) errors.push(`concepts[${i}] (${c.id||'?'}): falta "meaning".`);
+        if(!c.type) errors.push(`concepts[${i}] (${c.id||'?'}): falta "type".`);
+        if(c.examples && !Array.isArray(c.examples)) errors.push(`concepts[${i}] (${c.id||'?'}): "examples" debe ser un array.`);
+      });
+    }
+    return errors;
+  },
+  install(obj){
+    const errors = this.validate(obj);
+    if(errors.length) return { ok:false, errors };
+    const lang = obj.lesson.language;
+    obj.concepts.forEach(c=>{
+      const full = Object.assign({
+        language:lang, level:c.level||'B2', translation:'', notes:'', ipa:'', etymology:'',
+        synonyms:[], antonyms:[], related:[], tags:[], commonMistakes:[], patterns:[], examples:[]
+      }, c);
+      const prev = Data.getConcept(c.id);
+      if(prev && prev.explanation && !full.explanation) full.explanation = prev.explanation;
+      Data.upsertConcept(full);
+    });
+    const lesson = Object.assign({ version:1, language:lang, tags:[], prerequisites:[] }, obj.lesson,
+      { conceptIds: obj.concepts.map(c=>c.id) });
+    Data.upsertLesson(lesson);
+    return { ok:true, lesson };
+  }
+};
+
+/* =========================================================
+   AI EXPLANATIONS  (on demand, one concept at a time, cached in concept.explanation)
+   The API key lives under its own Storage key ('ai'), so it is NOT part of any export/backup.
+   ========================================================= */
+const AI = (function(){
+  const MODELS = [
+    { id:'claude-haiku-4-5-20251001', label:'Haiku 4.5 (cheapest)' },
+    { id:'claude-sonnet-5-5', label:'Sonnet 5.5 (higher quality)' }
+  ];
+  const NATIVE_LANGS = ['Spanish','English','Portuguese','French','Italian','German'];
+  const defaults = { apiKey:'', model:MODELS[0].id, nativeLang:'Spanish', usage:{ calls:0, input:0, output:0 } };
+  let cfg = Object.assign({}, defaults, Storage.get('ai', {}));
+  cfg.usage = Object.assign({}, defaults.usage, cfg.usage);
+  const pending = {};   // conceptId -> true while a request is in flight
+
+  function save(){ Storage.set('ai', cfg); }
+  function hasKey(){ return !!(cfg.apiKey && cfg.apiKey.trim()); }
+
+  function buildPrompt(c){
+    const ex = (c.examples||[]).slice(0,2).map(e=>'- '+e.text).join('\n');
+    return `Target language: ${languageLabel(c.language)} (${c.language})
+Learner's native language: ${cfg.nativeLang}. Write ALL explanation text in ${cfg.nativeLang}; keep target-language expressions and examples in the target language.
+Learner level: ${c.level}
+Concept type: ${String(c.type).replace('_',' ')}
+Expression: ${c.expression}
+Meaning: ${c.meaning}
+${c.patterns && c.patterns.length ? 'Patterns: '+c.patterns.join(' | ')+'\n' : ''}${ex ? 'Examples:\n'+ex+'\n' : ''}
+Explain this concept so the learner can USE it, not just recognise it. Be concise and concrete.
+Return ONLY a JSON object with exactly these keys:
+{"usage": "when and in what contexts it is used (2-3 sentences)",
+ "register": "formality and tone, one short sentence",
+ "grammar": "the grammatical pattern: structure, word order, prepositions, separability, tenses, etc. (2-3 sentences)",
+ "pitfalls": ["2-3 typical mistakes for a ${cfg.nativeLang} speaker, each as: wrong form -> why it is wrong"],
+ "contrast": "how it differs from the closest ${cfg.nativeLang} equivalent or from a similar expression (1-2 sentences)"}`;
+  }
+
+  function parse(text){
+    const a = text.indexOf('{'), b = text.lastIndexOf('}');
+    if(a<0 || b<=a) throw new Error('La respuesta no contiene JSON.');
+    const o = JSON.parse(text.slice(a, b+1));
+    const str = v => (typeof v==='string' ? v.trim() : '');
+    const out = {
+      usage:str(o.usage), register:str(o.register), grammar:str(o.grammar), contrast:str(o.contrast),
+      pitfalls: Array.isArray(o.pitfalls) ? o.pitfalls.map(str).filter(Boolean) : []
+    };
+    if(!out.usage && !out.grammar) throw new Error('La respuesta no tiene el formato esperado.');
+    return out;
+  }
+
+  async function explain(conceptId){
+    const c = Data.getConcept(conceptId);
+    if(!c) throw new Error('Concepto no encontrado.');
+    if(!hasKey()) throw new Error('Falta la API key. Añádela en Settings.');
+    if(pending[conceptId]) throw new Error('Ya se está generando.');
+    pending[conceptId] = true;
+    try{
+      let res;
+      try{
+        res = await fetch('https://api.anthropic.com/v1/messages', {
+          method:'POST',
+          headers:{
+            'content-type':'application/json',
+            'x-api-key': cfg.apiKey.trim(),
+            'anthropic-version':'2023-06-01',
+            'anthropic-dangerous-direct-browser-access':'true'
+          },
+          body: JSON.stringify({
+            model: cfg.model,
+            max_tokens: 900,
+            system: 'You are a concise, practical language teacher. Respond with ONLY a valid JSON object: no markdown fences, no preamble.',
+            messages:[{ role:'user', content: buildPrompt(c) }]
+          })
+        });
+      }catch(netErr){
+        throw new Error('Sin conexión o petición bloqueada.');
+      }
+      if(!res.ok){
+        let detail = '';
+        try{ const j = await res.json(); detail = j && j.error && j.error.message ? j.error.message : ''; }catch(e){}
+        if(res.status===401) throw new Error('API key inválida.');
+        if(res.status===429) throw new Error('Límite de uso alcanzado, inténtalo en un momento.');
+        throw new Error('Error '+res.status+(detail?': '+detail:''));
+      }
+      const data = await res.json();
+      if(data.usage){
+        cfg.usage.calls += 1;
+        cfg.usage.input += data.usage.input_tokens || 0;
+        cfg.usage.output += data.usage.output_tokens || 0;
+        save();
+      }
+      if(data.stop_reason==='max_tokens') throw new Error('La respuesta se cortó; inténtalo de nuevo.');
+      const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+      const exp = parse(text);
+      exp.model = cfg.model; exp.lang = cfg.nativeLang; exp.createdAt = Date.now();
+      c.explanation = exp;
+      Data.saveConcepts();
+      return exp;
+    } finally { delete pending[conceptId]; }
+  }
+
+  return {
+    MODELS, NATIVE_LANGS, explain, hasKey,
+    config: ()=>cfg, save,
+    isPending: id=>!!pending[id],
+    resetUsage(){ cfg.usage = { calls:0, input:0, output:0 }; save(); }
+  };
+})();
+
+/* =========================================================
+   TTS ENGINE
+   ========================================================= */
+const TTS = (function(){
+  const supported = 'speechSynthesis' in window;
+  let voices = [];
+  function loadVoices(){ if(supported) voices = window.speechSynthesis.getVoices(); return voices; }
+  if(supported){
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+  function speak(text, opts){
+    if(!supported){ Utils.toast('Este navegador no soporta Text-to-Speech.'); return; }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const s = Data.settings();
+    u.lang = (opts&&opts.lang) || s.lang || 'en-US';
+    u.rate = (opts&&opts.rate) || s.rate || 1;
+    u.pitch = (opts&&opts.pitch!=null) ? opts.pitch : (s.pitch!=null?s.pitch:1);
+    if(s.voiceName){
+      const v = voices.find(v=>v.name===s.voiceName);
+      if(v) u.voice = v;
+    }
+    window.speechSynthesis.speak(u);
+  }
+  return { supported, speak, voices:()=>voices, loadVoices };
+})();
+
+/* =========================================================
+   RECORDER (microphone record & playback — in-memory only,
+   cleared on page reload; not persisted to storage)
+   ========================================================= */
+const Recorder = (function(){
+  const supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  const blobs = {};   // key -> Blob
+  const urls = {};    // key -> object URL (revoked when replaced)
+  let mediaRecorder = null;
+  let stream = null;
+  let chunks = [];
+  let activeKey = null;
+  let currentAudio = null;
+  let maxDurationTimer = null;
+
+  function isRecording(){ return !!(mediaRecorder && mediaRecorder.state==='recording'); }
+  function has(key){ return !!blobs[key]; }
+
+  async function start(key, onStop){
+    if(!supported){ Utils.toast('Recording is not supported in this browser.'); return false; }
+    if(isRecording()) return false;
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    }catch(err){
+      Utils.toast('Microphone access was denied or is unavailable.');
+      return false;
+    }
+    chunks = [];
+    activeKey = key;
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e=>{ if(e.data && e.data.size>0) chunks.push(e.data); };
+    mediaRecorder.onstop = ()=>{
+      clearTimeout(maxDurationTimer);
+      if(urls[key]) URL.revokeObjectURL(urls[key]);
+      const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      blobs[key] = blob;
+      urls[key] = URL.createObjectURL(blob);
+      stream.getTracks().forEach(t=>t.stop());
+      stream = null; mediaRecorder = null; activeKey = null;
+      if(onStop) onStop(blob);
+    };
+    mediaRecorder.start();
+    // Safety cutoff so a forgotten recording doesn't run forever.
+    maxDurationTimer = setTimeout(()=>{ stop(); }, 15000);
+    return true;
+  }
+  function stop(){ if(isRecording()) mediaRecorder.stop(); }
+  function play(key){
+    if(!blobs[key]) return;
+    if(currentAudio){ currentAudio.pause(); }
+    currentAudio = new Audio(urls[key]);
+    currentAudio.play();
+  }
+  return { supported, isRecording, has, start, stop, play, activeKey:()=>activeKey };
+})();
+
+/* =========================================================
+   SRS ENGINE (simplified SM-2)
+   ========================================================= */
+const SRS = {
+  MODALITY_BY_EXTYPE: { fill_blank:'reading', multiple_choice:'reading', listening:'listening',
+    dictation:'listening', error_correction:'production', word_order:'production', production:'production' },
+
+  computeMastery(s){
+    const mods = ['reading','listening','production'];
+    let acc=0, count=0;
+    mods.forEach(m=>{ const st=s.modalityStats[m]; if(st.total>0){ acc += st.correct/st.total; count++; } });
+    const accuracyScore = count>0 ? (acc/count)*70 : 0;
+    const repScore = Math.min(s.repetitions,10)/10*20;
+    const breadthBonus = count>=2 ? 10 : (count===1?4:0);
+    const lapsePenalty = Math.min(s.lapses*5,25);
+    return Math.max(0, Math.min(100, Math.round(accuracyScore+repScore+breadthBonus-lapsePenalty)));
+  },
+  level(s){
+    const modsUsed = ['reading','listening','production'].filter(m=>s.modalityStats[m].total>0).length;
+    if(s.repetitions===0 && !s.lastReviewed) return 'New';
+    if(s.mastery<28) return 'Learning';
+    if(s.mastery<55) return 'Familiar';
+    if(s.mastery<80 || modsUsed<2 || s.repetitions<5) return 'Strong';
+    return 'Mastered';
+  },
+  recordAttempt(conceptId, exType, isCorrect){
+    const s = Data.getSrs(conceptId);
+    const mod = SRS.MODALITY_BY_EXTYPE[exType] || 'reading';
+    s.modalityStats[mod].total++;
+    if(isCorrect) s.modalityStats[mod].correct++;
+    if(!s.firstSeen) s.firstSeen = Date.now();
+  },
+  schedule(conceptId, ratingKey){
+    const s = Data.getSrs(conceptId);
+    const qualityMap = { again:2, hard:3, good:4, easy:5 };
+    const q = qualityMap[ratingKey] != null ? qualityMap[ratingKey] : 4;
+    const now = Date.now();
+    s.lastReviewed = now;
+    if(!s.firstSeen) s.firstSeen = now;
+    if(q<3){ s.lapses++; s.repetitions=0; s.interval=1; }
+    else{
+      if(s.repetitions===0) s.interval=1;
+      else if(s.repetitions===1) s.interval=6;
+      else s.interval=Math.round(s.interval*s.ease);
+      s.repetitions++;
+    }
+    s.ease = Math.max(1.3, s.ease + (0.1-(5-q)*(0.08+(5-q)*0.02)));
+    if(ratingKey==='hard') s.interval = Math.max(1, Math.round(s.interval*0.7));
+    if(ratingKey==='easy') s.interval = Math.max(1, Math.round(s.interval*1.3));
+    s.nextReview = now + s.interval*24*60*60*1000;
+    s.mastery = SRS.computeMastery(s);
+    Data.saveSrs();
+    return s;
+  },
+  dueBucket(s){
+    const now = Date.now(), startToday = Utils.startOfDay(now), endToday = startToday+24*60*60*1000;
+    const endWeek = startToday+7*24*60*60*1000;
+    if(s.nextReview<=now) return s.nextReview<startToday ? 'overdue' : 'dueNow';
+    if(s.nextReview<endToday) return 'dueToday';
+    if(s.nextReview<endToday+24*60*60*1000) return 'tomorrow';
+    if(s.nextReview<endWeek) return 'thisWeek';
+    return 'later';
+  },
+  buildQueue(mode, opts){
+    opts = opts||{};
+    const now = Date.now();
+    const all = Data.allConcepts();
+    let pool = [];
+    if(mode==='lesson' && opts.lessonId){
+      const lesson = Data.getLesson(opts.lessonId);
+      pool = (lesson? lesson.conceptIds : []).map(id=>Data.getConcept(id)).filter(Boolean);
+    } else if(mode==='weak'){
+      pool = all.filter(c=>{ const s=Data.getSrs(c.id); return s.repetitions>0 && s.mastery<55; })
+        .sort((a,b)=>Data.getSrs(a.id).mastery-Data.getSrs(b.id).mastery);
+    } else if(mode==='mistakes'){
+      const ids = Array.from(new Set(Data.allMistakes().map(m=>m.conceptId)));
+      pool = ids.map(id=>Data.getConcept(id)).filter(Boolean);
+    } else if(mode==='random'){
+      pool = Utils.sample(all, Math.min(10, all.length));
+    } else if(mode==='learn'){
+      pool = all.filter(c=>Data.getSrs(c.id).repetitions===0);
+      const limit = Math.max(1, Data.meta().newPerDay || 5);
+      pool = pool.slice(0, limit);
+    } else if(mode==='listening' || mode==='production'){
+      pool = all.filter(c=>Data.getSrs(c.id).nextReview<=now || Data.getSrs(c.id).repetitions>0);
+    } else { // daily / quick — due + limited new
+      const due = all.filter(c=>Data.getSrs(c.id).nextReview<=now && Data.getSrs(c.id).repetitions>0)
+        .sort((a,b)=>Data.getSrs(a.id).nextReview-Data.getSrs(b.id).nextReview);
+      const fresh = all.filter(c=>Data.getSrs(c.id).repetitions===0)
+        .slice(0, mode==='quick'?3:Data.meta().newPerDay);
+      pool = due.concat(fresh);
+    }
+    if(mode==='quick') pool = pool.slice(0,7);
+    if(opts.limit) pool = pool.slice(0, opts.limit);
+    return pool;
+  }
+};
+
+/* =========================================================
+   EXERCISE ENGINE
+   ========================================================= */
+const Exercise = {
+  // Difficulty tiers: a concept only "unlocks" harder exercise types as it accumulates
+  // successful repetitions. Tier 1 (brand new) is recognition-only — no typing, no production.
+  DIFFICULTY_TIERS: {
+    1: ['multiple_choice','fill_blank'],                                            // first exposure: pure recognition
+    2: ['multiple_choice','fill_blank','listening'],                                // add listening recognition
+    3: ['multiple_choice','fill_blank','listening','word_order','error_correction'],// add constrained production
+    4: ['multiple_choice','fill_blank','listening','word_order','error_correction','dictation','production'] // free production
+  },
+  // The tier at which each exercise type first becomes available — used to prefer the
+  // *freshest* (hardest currently-unlocked) type rather than any cumulative one, so
+  // difficulty strictly climbs instead of occasionally dipping back to something easier.
+  TYPE_MIN_TIER: { multiple_choice:1, fill_blank:1, listening:2, word_order:3, error_correction:3, dictation:4, production:4 },
+  tierFor(repetitions){
+    const r = repetitions || 0;
+    if(r<=0) return 1;
+    if(r<=2) return 2;
+    if(r<=4) return 3;
+    return 4;
+  },
+  applicableTypes(concept, repetitions){
+    const tier = Exercise.tierFor(repetitions);
+    const allowed = Exercise.DIFFICULTY_TIERS[tier];
+    const types = [];
+    if(concept.examples && concept.examples.length){
+      if(allowed.includes('fill_blank')) types.push('fill_blank');
+      if(allowed.includes('multiple_choice')) types.push('multiple_choice');
+      if(allowed.includes('listening')) types.push('listening');
+      if(allowed.includes('dictation')) types.push('dictation');
+    }
+    if(allowed.includes('error_correction') && concept.commonMistakes && concept.commonMistakes.length) types.push('error_correction');
+    if(allowed.includes('word_order') && concept.examples && concept.examples.some(e=>e.text.split(' ').length>=4)) types.push('word_order');
+    if(allowed.includes('production')) types.push('production');
+    // Safety net: a concept with no usable examples/mistakes at low tiers still needs something
+    // to show — "production" only needs a meaning, not examples, so it always works.
+    return types.length ? types : ['production'];
+  },
+  // repsOverride lets a session escalate difficulty across repeated attempts of the same
+  // concept within one sitting, independent of the concept's persisted SRS repetitions.
+  pickType(concept, srs, repsOverride){
+    const reps = repsOverride!=null ? repsOverride : srs.repetitions;
+    const tier = Exercise.tierFor(reps);
+    const cumulative = Exercise.applicableTypes(concept, reps);
+    // Prefer types native to the current tier so difficulty never quietly regresses; only
+    // fall back to the next-highest tier the concept's data actually supports.
+    let pool = cumulative.filter(t=>Exercise.TYPE_MIN_TIER[t]===tier);
+    if(pool.length===0){
+      const maxAvailableTier = Math.max(...cumulative.map(t=>Exercise.TYPE_MIN_TIER[t]));
+      pool = cumulative.filter(t=>Exercise.TYPE_MIN_TIER[t]===maxAvailableTier);
+    }
+    // bias toward least-practiced modality within that pool
+    const modTotals = { reading:srs.modalityStats.reading.total, listening:srs.modalityStats.listening.total, production:srs.modalityStats.production.total };
+    const weighted = [];
+    pool.forEach(t=>{
+      const mod = SRS.MODALITY_BY_EXTYPE[t];
+      const weight = 1 / (1+modTotals[mod]);
+      for(let i=0;i<Math.ceil(weight*10);i++) weighted.push(t);
+    });
+    return weighted[Math.floor(Math.random()*weighted.length)];
+  },
+  distractorPool(concept, allConcepts){
+    return allConcepts.filter(c=>c.id!==concept.id && c.type===concept.type && c.examples && c.examples.length);
+  },
+  generate(concept, type, allConcepts){
+    type = type || 'fill_blank';
+    const ex = concept.examples && concept.examples.length ? concept.examples[Math.floor(Math.random()*concept.examples.length)] : null;
+    const base = { conceptId:concept.id, type, concept };
+    if(type==='fill_blank'){
+      return Object.assign(base, { prompt:ex.text.replace(ex.blank, '______'), answers:ex.answers, raw:ex });
+    }
+    if(type==='multiple_choice'){
+      const distractors = Utils.sample(Exercise.distractorPool(concept, allConcepts), 3).map(c=>c.examples[0].blank);
+      const options = Utils.shuffle([ex.answers[0], ...distractors].filter((v,i,a)=>a.indexOf(v)===i)).slice(0,4);
+      return Object.assign(base, { prompt:ex.text.replace(ex.blank,'______'), options, answers:ex.answers, raw:ex });
+    }
+    if(type==='listening'){
+      const distractors = Utils.sample(Exercise.distractorPool(concept, allConcepts), 3).map(c=>c.expression);
+      const options = Utils.shuffle([concept.expression, ...distractors].filter((v,i,a)=>a.indexOf(v)===i)).slice(0,4);
+      return Object.assign(base, { audioText:ex.text, options, answers:[concept.expression], raw:ex });
+    }
+    if(type==='dictation'){
+      return Object.assign(base, { audioText:ex.text, answers:[ex.text], raw:ex });
+    }
+    if(type==='error_correction'){
+      const m = concept.commonMistakes[Math.floor(Math.random()*concept.commonMistakes.length)];
+      return Object.assign(base, { prompt:m.wrong, answers:[m.correct], raw:m });
+    }
+    if(type==='word_order'){
+      const words = ex.text.replace(/[.?!]$/,'').split(' ');
+      return Object.assign(base, { words: Utils.shuffle(words), answers:[ex.text.replace(/[.?!]$/,'')], raw:ex });
+    }
+    if(type==='production'){
+      return Object.assign(base, { prompt:`Write your own sentence using "${concept.expression}".`, reference: ex?ex.text:concept.meaning });
+    }
+  },
+  grade(exObj, userInput){
+    const norm = Utils.normalize;
+    if(exObj.type==='fill_blank' || exObj.type==='error_correction' || exObj.type==='dictation'){
+      const ok = exObj.answers.some(a=>norm(a)===norm(userInput));
+      return ok;
+    }
+    if(exObj.type==='multiple_choice' || exObj.type==='listening'){
+      return exObj.answers.some(a=>norm(a)===norm(userInput));
+    }
+    if(exObj.type==='word_order'){
+      return exObj.answers.some(a=>norm(a)===norm(userInput));
+    }
+    return null; // production: ungraded, self-rated
+  }
+};
+
+/* =========================================================
+   REVIEW SESSION CONTROLLER
+   ========================================================= */
+const ReviewSession = {
+  state:null,
+  // How many exercises a single concept gets in one sitting for "study" modes (lessons,
+  // learning new material). Spaced-repetition-driven modes keep 1 touch per concept so
+  // scheduling stays meaningful.
+  REPS_PER_CONCEPT: { lesson:4, learn:4 },
+
+  start(mode, opts){
+    const queue = SRS.buildQueue(mode, opts||{});
+    if(queue.length===0) return false;
+    const repsPerConcept = this.REPS_PER_CONCEPT[mode] || 1;
+
+    // All brand-new concepts get introduced first, in lesson order, before any quiz starts.
+    const introQueue = queue.filter(c=>!Data.getSrs(c.id).introSeen).map(c=>c.id);
+
+    // Build each concept's own easy→hard attempt sequence, then randomly interleave the
+    // concepts (never their own internal order) so the next word is unpredictable.
+    const perConceptSteps = {};
+    queue.forEach(c=>{ perConceptSteps[c.id] = Array.from({length:repsPerConcept}, (_,i)=>i); });
+    const activeIds = queue.map(c=>c.id);
+    const steps = [];
+    while(activeIds.some(id=>perConceptSteps[id].length)){
+      const avail = activeIds.filter(id=>perConceptSteps[id].length);
+      const pick = avail[Math.floor(Math.random()*avail.length)];
+      const attemptIndex = perConceptSteps[pick].shift();
+      steps.push({ conceptId:pick, attemptIndex });
+    }
+
+    this.state = {
+      mode,
+      conceptsById: Object.fromEntries(queue.map(c=>[c.id,c])),
+      introQueue, steps, stepIndex:0,
+      correctCount:0,
+      currentExercise:null, currentStep:null, answered:false, isCorrect:null,
+      showIntro:false, introConceptId:null,
+      showMistakeReview:false, mistakeConceptId:null, retryCounts:{},
+      startedAt:Date.now(), done:false,
+      focusType: (mode==='listening') ? ['listening','dictation'] : (mode==='production' ? ['error_correction','word_order','production'] : null)
+    };
+    this.advance();
+    return true;
+  },
+  pickTypeFor(concept, srs, repsOverride){
+    const st = this.state;
+    if(st.focusType){
+      const applicable = Exercise.applicableTypes(concept, repsOverride!=null?repsOverride:srs.repetitions).filter(t=>st.focusType.includes(t));
+      return applicable.length ? applicable[Math.floor(Math.random()*applicable.length)] : Exercise.pickType(concept, srs, repsOverride);
+    }
+    return Exercise.pickType(concept, srs, repsOverride);
+  },
+  // Moves to whatever should be shown next: remaining intros first, then the next exercise
+  // step, then the session summary once everything is done.
+  advance(){
+    const st = this.state;
+    st.showMistakeReview = false; st.mistakeConceptId = null;
+    if(st.introQueue.length){
+      st.showIntro = true;
+      st.introConceptId = st.introQueue.shift();
+      st.currentExercise = null;
+      return;
+    }
+    st.showIntro = false;
+    if(st.stepIndex >= st.steps.length){ st.done = true; return; }
+    const step = st.steps[st.stepIndex];
+    const concept = st.conceptsById[step.conceptId];
+    const srs = Data.getSrs(concept.id);
+    // Each attempt of the same concept within a session climbs exactly one difficulty tier
+    // above wherever the concept's real progress currently places it — so a session always
+    // moves from easiest to hardest, and a well-practiced concept starts (and finishes) harder.
+    const baseTier = Exercise.tierFor(srs.repetitions);
+    const sessionTier = Math.min(4, baseTier + step.attemptIndex);
+    const repsForTier = { 1:0, 2:1, 3:3, 4:5 }[sessionTier];
+    const type = this.pickTypeFor(concept, srs, repsForTier);
+    st.currentExercise = Exercise.generate(concept, type, Data.allConcepts());
+    st.currentStep = step;
+    st.answered = false; st.isCorrect = null;
+  },
+  confirmIntro(){
+    const st = this.state;
+    const srs = Data.getSrs(st.introConceptId);
+    srs.introSeen = true;
+    Data.saveSrs();
+    st.introConceptId = null;
+    this.advance();
+  },
+  confirmMistakeReview(){
+    this.advance();
+  },
+  submit(userInput){
+    const st = this.state;
+    const ex = st.currentExercise;
+    const isCorrect = Exercise.grade(ex, userInput);
+    st.answered = true; st.isCorrect = isCorrect; st.lastInput = userInput;
+    if(isCorrect !== null){
+      SRS.recordAttempt(ex.conceptId, ex.type, isCorrect);
+      if(isCorrect) st.correctCount++;
+      else Data.addMistake({ conceptId:ex.conceptId, exerciseType:ex.type, userAnswer:userInput, expected:ex.answers?ex.answers[0]:'' });
+    }
+    return isCorrect;
+  },
+  // Called when the learner clicks "Continue" after seeing feedback. If the answer was
+  // wrong, a fresh attempt of the same concept is requeued later in the session — so getting
+  // it wrong means practicing it again, not just reading a reminder — capped so a genuinely
+  // confusing item can't grow the session forever. SRS scheduling for the concept only
+  // finalises once no attempts of it remain pending.
+  MAX_RETRIES_PER_CONCEPT: 2,
+  continueFromExercise(){
+    const st = this.state;
+    const ex = st.currentExercise;
+    const step = st.currentStep;
+    const wasWrong = ex.type!=='production' && st.isCorrect===false;
+
+    if(wasWrong){
+      const retryCount = st.retryCounts[ex.conceptId] || 0;
+      if(retryCount < this.MAX_RETRIES_PER_CONCEPT){
+        st.retryCounts[ex.conceptId] = retryCount + 1;
+        // Insert right after this step (not a random later spot) so the retry stays at the
+        // same difficulty and never appears "before" a harder attempt of the same concept
+        // that's already queued — the easy→hard order for this concept stays intact.
+        st.steps.splice(st.stepIndex + 1, 0, { conceptId: ex.conceptId, attemptIndex: step.attemptIndex });
+      }
+    }
+
+    const hasMoreForConcept = st.steps.slice(st.stepIndex+1).some(s=>s.conceptId===ex.conceptId);
+    if(!hasMoreForConcept){
+      const rating = ex.type==='production' ? 'good' : (st.isCorrect ? 'good' : 'again');
+      SRS.schedule(ex.conceptId, rating);
+      Data.saveConcepts();
+    }
+
+    st.stepIndex++;
+    if(wasWrong){
+      st.showMistakeReview = true;
+      st.mistakeConceptId = ex.conceptId;
+      st.currentExercise = null;
+      return;
+    }
+    this.advance();
+  },
+  finish(){
+    const st = this.state;
+    const meta = Data.meta();
+    meta.sessionsCompleted++;
+    meta.totalStudySeconds += Math.round((Date.now()-st.startedAt)/1000);
+    Data.saveMeta();
+    Data.touchActivity();
+  }
+};
+
+/* =========================================================
+   STATISTICS
+   ========================================================= */
+const Stats = {
+  dueCounts(){
+    const buckets = { dueNow:0, dueToday:0, overdue:0, tomorrow:0, thisWeek:0, later:0 };
+    Data.allConcepts().forEach(c=>{ const s=Data.getSrs(c.id); buckets[SRS.dueBucket(s)]++; });
+    return buckets;
+  },
+  knowledge(){
+    const counts = { New:0, Learning:0, Familiar:0, Strong:0, Mastered:0 };
+    Data.allConcepts().forEach(c=>{ const s=Data.getSrs(c.id); counts[SRS.level(s)]++; });
+    return counts;
+  },
+  weakAreas(){
+    const byTag = {};
+    Data.allConcepts().forEach(c=>{
+      const s = Data.getSrs(c.id);
+      if(s.repetitions===0) return;
+      (c.tags.length?c.tags:[c.type]).forEach(tag=>{
+        byTag[tag] = byTag[tag] || { total:0, sum:0 };
+        byTag[tag].total++; byTag[tag].sum += s.mastery;
+      });
+    });
+    return Object.entries(byTag).map(([tag,v])=>({ tag, avg: Math.round(v.sum/v.total) }))
+      .sort((a,b)=>a.avg-b.avg);
+  },
+  today(){
+    const todayStart = Utils.startOfDay(Date.now());
+    const mistakesToday = Data.allMistakes().filter(m=>m.date>=todayStart).length;
+    let reviewsToday=0, correctToday=0;
+    Object.values(Data.allSrs()).forEach(s=>{ if(s.lastReviewed && s.lastReviewed>=todayStart) reviewsToday++; });
+    return { reviewsToday, mistakesToday };
+  }
+};
+
+/* =========================================================
+   ROUTER + UI
+   ========================================================= */
+const NAV = [
+  {hash:'#/dashboard', label:'Dashboard'},
+  {hash:'#/library', label:'Library'},
+  {hash:'#/lessons', label:'Lessons'},
+  {hash:'#/mistakes', label:'Mistakes'},
+  {hash:'#/stats', label:'Statistics'},
+  {hash:'#/settings', label:'Settings'}
+];
+
+function renderNav(){
+  const due = Stats.dueCounts();
+  const dueTotal = due.dueNow + due.overdue;
+  const current = location.hash.split('?')[0] || '#/dashboard';
+  const nav = document.getElementById('topnav');
+  nav.innerHTML = `
+    <div class="brand"><span class="brand-mark">Lingua Field</span><span class="brand-sub">context-based learning</span></div>
+    <div class="navlinks">
+      ${NAV.map(n=>`<a class="navlink ${current.startsWith(n.hash)?'active':''}" href="${n.hash}">${n.label}${n.hash==='#/dashboard'&&dueTotal>0?`<span class="navbadge">${dueTotal}</span>`:''}</a>`).join('')}
+    </div>
+    <input type="text" class="navsearch" id="globalSearch" placeholder="Search concepts…">
+  `;
+  document.getElementById('globalSearch').addEventListener('keydown', e=>{
+    if(e.key==='Enter'){ location.hash = '#/library?q='+encodeURIComponent(e.target.value); }
+  });
+}
+
+
+/* ---------- Dashboard ---------- */
+function viewDashboard(){
+  const due = Stats.dueCounts();
+  const meta = Data.meta();
+  const today = Stats.today();
+  const hour = new Date().getHours();
+  const greeting = hour<12?'Good morning':hour<19?'Good afternoon':'Good evening';
+  const lessons = Data.allLessons();
+  const newCount = Data.allConcepts().filter(c=>Data.getSrs(c.id).repetitions===0).length;
+  const learnBatch = Math.min(newCount, Math.max(1, meta.newPerDay || 5));
+  const continueLesson = lessons.find(l=>{
+    const total=l.conceptIds.length, started=l.conceptIds.filter(id=>Data.getSrs(id).repetitions>0).length;
+    return started>0 && started<total;
+  });
+  return `
+    <div class="card hero">
+      <div>
+        <span class="eyebrow">${new Date().toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'long'})}</span>
+        <h1>${greeting}.</h1>
+        <p class="muted">${due.dueNow+due.overdue>0 ? `${due.dueNow+due.overdue} concepts are ready for review.` : 'No reviews are due right now — nice work staying on top of things.'}</p>
+        <div class="btn-row">
+          <button class="btn ${newCount>0?'':'secondary'}" data-action="start-review" data-mode="learn" ${newCount===0?'disabled':''}>Start Learning${newCount>0?` (${learnBatch} new)`:''}</button>
+          <button class="btn ${due.dueNow+due.overdue>0?'':'secondary'}" data-action="start-review" data-mode="daily" ${due.dueNow+due.overdue===0?'disabled':''}>Start Review</button>
+          <button class="btn secondary" data-action="start-review" data-mode="quick">Quick Review (5 min)</button>
+        </div>
+      </div>
+      <div class="row" style="gap:22px;">
+        <div class="stat-block"><div class="stat-num">${meta.streak}</div><div class="stat-label">Day streak</div></div>
+        <div class="stat-block"><div class="stat-num">${today.reviewsToday}</div><div class="stat-label">Reviewed today</div></div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:14px;">
+      <div class="card">
+        <h3>Today's Reviews</h3>
+        <table>
+          <tr><td>Due now</td><td>${due.dueNow}</td></tr>
+          <tr><td>Overdue</td><td>${due.overdue}</td></tr>
+          <tr><td>Tomorrow</td><td>${due.tomorrow}</td></tr>
+          <tr><td>This week</td><td>${due.thisWeek}</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Continue Learning</h3>
+        ${continueLesson ? (()=>{
+          const total=continueLesson.conceptIds.length, started=continueLesson.conceptIds.filter(id=>Data.getSrs(id).repetitions>0).length;
+          const pct = Math.round(started/total*100);
+          return `<p><strong>${Utils.escapeHtml(continueLesson.title)}</strong></p>
+          <div class="mastery-track"><div class="mastery-fill" style="width:${pct}%"></div></div>
+          <p class="faint">${pct}% complete</p>
+          <button class="btn secondary" data-action="start-review" data-mode="lesson" data-lesson="${continueLesson.id}">Continue</button>`;
+        })() : `<p class="muted">Import or start a lesson to see progress here.</p><a class="btn secondary" href="#/lessons">Browse lessons</a>`}
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px;">
+      <div class="card col">
+        <h3>Practice modes</h3>
+        <div class="btn-row">
+          <button class="btn secondary" data-action="start-review" data-mode="weak">Weak Areas</button>
+          <button class="btn secondary" data-action="start-review" data-mode="mistakes">Mistake Review</button>
+          <button class="btn secondary" data-action="start-review" data-mode="listening">Listening Only</button>
+          <button class="btn secondary" data-action="start-review" data-mode="production">Production Only</button>
+          <button class="btn secondary" data-action="start-review" data-mode="random">Random Practice</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------- AI explanation block ---------- */
+function explanationBodyHtml(x){
+  const sec = (title, text) => text ? `<h4>${title}</h4><p>${Utils.escapeHtml(text)}</p>` : '';
+  return `<div class="ai-body">
+    ${sec('Uso y contexto', x.usage)}
+    ${sec('Registro', x.register)}
+    ${sec('Gramática', x.grammar)}
+    ${x.pitfalls && x.pitfalls.length ? `<h4>Errores típicos</h4><ul>${x.pitfalls.map(p=>`<li>${Utils.escapeHtml(p)}</li>`).join('')}</ul>` : ''}
+    ${sec('Contraste', x.contrast)}
+  </div>`;
+}
+
+/* inner = contents of the container; expanded = detail page (always open) vs. session cards (collapsed) */
+function aiExplainInner(c, expanded){
+  const x = c.explanation;
+  if(x){
+    const regen = expanded ? `<div class="btn-row" style="margin-top:8px;"><button class="btn ghost" data-action="ai-explain" data-id="${c.id}" data-expanded="1" data-regen="1">↻ Regenerar</button></div>` : '';
+    if(expanded) return `<h3 style="margin-top:20px;">Explicación</h3>${explanationBodyHtml(x)}${regen}`;
+    return `<details class="ai-box"><summary>Ver explicación</summary>${explanationBodyHtml(x)}</details>`;
+  }
+  return `<div class="ai-box"><button class="btn secondary" data-action="ai-explain" data-id="${c.id}" ${expanded?'data-expanded="1"':''}>✨ Explicar con IA</button></div>`;
+}
+function aiExplainHtml(c, expanded){
+  return `<div id="aiHost_${c.id}" class="ai-host">${aiExplainInner(c, expanded)}</div>`;
+}
+
+/* ---------- Library ---------- */
+function recordWidgetHtml(key){
+  if(!Recorder.supported) return '';
+  const hasRecording = Recorder.has(key);
+  return `<span class="record-widget">
+    <button class="mic-btn" data-action="record-toggle" data-key="${Utils.escapeHtml(key)}" title="Record yourself">🎤</button>
+    <button class="play-btn ${hasRecording?'':'hidden'}" data-action="record-play" data-key="${Utils.escapeHtml(key)}" title="Play your recording">▶</button>
+  </span>`;
+}
+
+function conceptCardHtml(c){
+  const s = Data.getSrs(c.id);
+  return `
+    <div class="concept" data-action="open-concept" data-id="${c.id}">
+      <div class="concept-tab t-${c.type}">${c.type.replace('_',' ')}</div>
+      <div class="concept-head">
+        <span class="concept-expr">${Utils.escapeHtml(c.expression)}</span>
+        <span class="pill">${c.level}</span>
+        <span class="pill ${s.mastery>=80?'teal':s.mastery>=50?'gold':'rust'}">${SRS.level(s)}</span>
+      </div>
+      <div class="concept-meaning muted">${Utils.escapeHtml(c.meaning)}</div>
+      <div class="mastery-track"><div class="mastery-fill" style="width:${s.mastery}%"></div></div>
+      <div class="tagset">${c.tags.map(t=>`<span class="pill">${t}</span>`).join('')}</div>
+    </div>`;
+}
+
+function viewLibrary(query){
+  const params = new URLSearchParams(query||'');
+  const q = params.get('q') || '';
+  const tagFilter = params.get('tag') || '';
+  let concepts = Data.allConcepts();
+  if(q){
+    const nq = q.toLowerCase();
+    concepts = concepts.filter(c => [c.expression,c.meaning,c.translation,c.notes,...(c.tags||[]),...(c.synonyms||[]),...(c.antonyms||[]),...(c.examples||[]).map(e=>e.text)]
+      .join(' ').toLowerCase().includes(nq));
+  }
+  if(tagFilter) concepts = concepts.filter(c=>c.tags.includes(tagFilter));
+  const allTags = Array.from(new Set(Data.allConcepts().flatMap(c=>c.tags))).sort();
+  return `
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <h2 style="margin:0;">Library</h2>
+        <div style="margin-left:auto;" class="btn-row">
+          <button class="btn secondary" data-action="open-add-concept">+ New concept</button>
+        </div>
+      </div>
+      <input type="text" id="libSearch" placeholder="Search expressions, meanings, tags…" value="${Utils.escapeHtml(q)}" style="margin-top:10px;">
+      <div class="tagset" style="margin-top:10px;">
+        <a class="pill ${!tagFilter?'indigo':''}" href="#/library">All</a>
+        ${allTags.map(t=>`<a class="pill ${tagFilter===t?'indigo':''}" href="#/library?tag=${encodeURIComponent(t)}">${t}</a>`).join('')}
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      ${concepts.length ? concepts.map(conceptCardHtml).join('') : '<div class="empty-state">No concepts match your search.</div>'}
+    </div>
+  `;
+}
+
+function viewConceptDetail(id){
+  const c = Data.getConcept(id);
+  if(!c) return `<div class="empty-state">Concept not found.</div>`;
+  const s = Data.getSrs(id);
+  return `
+    <a href="#/library" class="faint">&larr; Back to library</a>
+    <div class="card" style="margin-top:10px;">
+      <div class="concept-head">
+        <h1 style="margin:0;">${Utils.escapeHtml(c.expression)}</h1>
+        <span class="pill t-${c.type}" style="background:none;">${c.type.replace('_',' ')}</span>
+        <span class="pill">${c.level}</span>
+      </div>
+      ${c.ipa?`<div class="concept-ipa">/${c.ipa}/</div>`:''}
+      <div class="row" style="align-items:center;justify-content:center;margin:14px 0;">
+        <button class="speak-btn" style="margin:0;" data-action="speak" data-text="${Utils.escapeHtml(c.expression)}" data-lang="${c.language}">🔊</button>
+        ${recordWidgetHtml(c.id+':expr')}
+      </div>
+      <p>${Utils.escapeHtml(c.meaning)}</p>
+      ${c.patterns.length?`<p class="faint"><strong>Patterns:</strong> ${c.patterns.map(Utils.escapeHtml).join(' · ')}</p>`:''}
+
+      <h3 style="margin-top:20px;">Examples</h3>
+      ${(c.examples||[]).map((e,i)=>`
+        <div class="row" style="align-items:center;margin-bottom:8px;">
+          <button class="btn ghost" data-action="speak" data-text="${Utils.escapeHtml(e.text)}" data-lang="${c.language}">🔊</button>
+          ${recordWidgetHtml(c.id+':ex:'+i)}
+          <p style="margin:0;">${Utils.escapeHtml(e.text)}</p>
+        </div>`).join('') || '<p class="faint">No examples yet.</p>'}
+
+      ${c.etymology?`<h3 style="margin-top:20px;">Where it comes from</h3><p class="muted">${Utils.escapeHtml(c.etymology)}</p>`:''}
+
+      ${c.commonMistakes.length?`<h3 style="margin-top:20px;">Common mistakes</h3>
+      ${c.commonMistakes.map(m=>`<p>❌ ${Utils.escapeHtml(m.wrong)}<br>✅ ${Utils.escapeHtml(m.correct)}</p>`).join('')}`:''}
+
+      ${aiExplainHtml(c, true)}
+
+      ${c.related.length?`<h3 style="margin-top:20px;">Related</h3><div class="tagset">${c.related.map(r=>`<span class="pill indigo">${Utils.escapeHtml(r)}</span>`).join('')}</div>`:''}
+
+      <h3 style="margin-top:20px;">Your mastery</h3>
+      <div class="row">
+        <div class="col"><span class="faint">Reading</span><div class="mastery-track"><div class="mastery-fill" style="width:${s.modalityStats.reading.total?Math.round(s.modalityStats.reading.correct/s.modalityStats.reading.total*100):0}%"></div></div></div>
+        <div class="col"><span class="faint">Listening</span><div class="mastery-track"><div class="mastery-fill" style="width:${s.modalityStats.listening.total?Math.round(s.modalityStats.listening.correct/s.modalityStats.listening.total*100):0}%"></div></div></div>
+        <div class="col"><span class="faint">Production</span><div class="mastery-track"><div class="mastery-fill" style="width:${s.modalityStats.production.total?Math.round(s.modalityStats.production.correct/s.modalityStats.production.total*100):0}%"></div></div></div>
+      </div>
+      <p class="faint" style="margin-top:8px;">Overall mastery: ${s.mastery}% · ${SRS.level(s)} · Next review: ${Utils.fmtDate(s.nextReview)}</p>
+    </div>
+  `;
+}
+
+/* ---------- Lessons ---------- */
+const LANGUAGE_NAMES = {
+  'en-US':'English (US)', 'en-GB':'English (UK)', 'de-DE':'German', 'fr-FR':'French',
+  'ja-JP':'Japanese', 'es-ES':'Spanish', 'it-IT':'Italian', 'pt-BR':'Portuguese (Brazil)',
+  'pt-PT':'Portuguese', 'zh-CN':'Chinese (Mandarin)', 'ko-KR':'Korean', 'ru-RU':'Russian'
+};
+function languageLabel(code){ return LANGUAGE_NAMES[code] || code; }
+
+function lessonCardHtml(l){
+  const total=l.conceptIds.length, started=l.conceptIds.filter(id=>Data.getSrs(id).repetitions>0).length;
+  const pct = total? Math.round(started/total*100):0;
+  return `<div class="card">
+    <span class="eyebrow">${l.level||''} · ${languageLabel(l.language)}</span>
+    <h3>${Utils.escapeHtml(l.title)}</h3>
+    <p class="muted">${Utils.escapeHtml(l.description||'')}</p>
+    <div class="mastery-track"><div class="mastery-fill" style="width:${pct}%"></div></div>
+    <p class="faint">${pct}% complete · ${total} concepts</p>
+    <div class="btn-row">
+      <button class="btn secondary" data-action="view-lesson" data-id="${l.id}">Open</button>
+      <button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Review</button>
+    </div>
+  </div>`;
+}
+
+function viewLessons(){
+  const lessons = Data.allLessons();
+  const byLanguage = {};
+  lessons.forEach(l=>{ (byLanguage[l.language] = byLanguage[l.language] || []).push(l); });
+  const languages = Object.keys(byLanguage).sort((a,b)=> languageLabel(a).localeCompare(languageLabel(b)));
+
+  return `
+    <div class="card">
+      <div class="row" style="align-items:center;">
+        <h2 style="margin:0;">Lessons</h2>
+        <div style="margin-left:auto;" class="btn-row">
+          <button class="btn secondary" data-action="open-import">Import Lesson (JSON)</button>
+        </div>
+      </div>
+      <p class="faint">Structured sets of related concepts, grouped by language. Import your own JSON or study one of the built-in lessons.</p>
+    </div>
+    ${languages.map(lang=>`
+      <div style="margin-top:22px;">
+        <div class="row" style="align-items:baseline;gap:8px;margin-bottom:10px;">
+          <h3 style="margin:0;">${languageLabel(lang)}</h3>
+          <span class="faint">${byLanguage[lang].length} lesson${byLanguage[lang].length===1?'':'s'}</span>
+        </div>
+        <div class="grid-2">
+          ${byLanguage[lang].map(lessonCardHtml).join('')}
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+function viewLessonDetail(id){
+  const l = Data.getLesson(id);
+  if(!l) return `<div class="empty-state">Lesson not found.</div>`;
+  const concepts = l.conceptIds.map(cid=>Data.getConcept(cid)).filter(Boolean);
+  return `
+    <a href="#/lessons" class="faint">&larr; Back to lessons</a>
+    <div class="card" style="margin-top:10px;">
+      <span class="eyebrow">${l.level||''} · ${l.language}</span>
+      <h1>${Utils.escapeHtml(l.title)}</h1>
+      <p class="muted">${Utils.escapeHtml(l.description||'')}</p>
+      <button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Review this lesson</button>
+    </div>
+    <div style="margin-top:14px;">${concepts.map(conceptCardHtml).join('')}</div>
+  `;
+}
+
+function importModalHtml(){
+  return `
+  <div class="modal-backdrop" data-action="close-modal">
+    <div class="modal" onclick="event.stopPropagation()">
+      <button class="modal-close" data-action="close-modal">✕</button>
+      <h2>Import Lesson</h2>
+      <p class="faint">Select a JSON file with a <code>lesson</code> object and a <code>concepts</code> array. See format below.</p>
+      <input type="file" id="importFile" accept="application/json">
+      <div id="importErrors" class="faint" style="color:var(--rust);margin-top:10px;"></div>
+      <details style="margin-top:14px;"><summary class="faint" style="cursor:pointer;">Expected format</summary>
+      <pre style="background:var(--paper-alt);padding:10px;border-radius:8px;font-size:.72rem;overflow:auto;">{
+  "formatVersion": "1.0",
+  "lesson": { "id": "lesson_x", "title": "...", "language": "en-US", "level": "B2" },
+  "concepts": [
+    { "id": "concept_x", "type": "phrasal_verb", "expression": "...", "meaning": "...",
+      "etymology": "optional — where the expression comes from",
+      "examples": [{ "text": "...", "blank": "...", "answers": ["..."] }],
+      "commonMistakes": [{ "wrong": "...", "correct": "..." }], "tags": ["..."] }
+  ]
+}</pre></details>
+    </div>
+  </div>`;
+}
+
+/* ---------- Mistakes ---------- */
+function viewMistakes(){
+  const mistakes = Data.allMistakes();
+  return `
+    <div class="card">
+      <h2>My Mistakes</h2>
+      <p class="faint">${mistakes.length} recorded. Review them directly to close the gaps.</p>
+      <button class="btn" data-action="start-review" data-mode="mistakes" ${mistakes.length===0?'disabled':''}>Review my mistakes</button>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <table>
+        <thead><tr><th>Concept</th><th>Exercise</th><th>Your answer</th><th>Expected</th><th>Date</th></tr></thead>
+        <tbody>
+        ${mistakes.slice(0,60).map(m=>{
+          const c = Data.getConcept(m.conceptId);
+          return `<tr><td>${c?Utils.escapeHtml(c.expression):m.conceptId}</td><td>${m.exerciseType}</td><td>${Utils.escapeHtml(m.userAnswer||'—')}</td><td>${Utils.escapeHtml(m.expected||'—')}</td><td>${Utils.fmtDate(m.date)}</td></tr>`;
+        }).join('') || `<tr><td colspan="5" class="faint">No mistakes yet — keep it that way!</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/* ---------- Statistics ---------- */
+function viewStats(){
+  const k = Stats.knowledge();
+  const weak = Stats.weakAreas();
+  const meta = Data.meta();
+  const totalConcepts = Data.allConcepts().length;
+  const totalReviewed = Object.values(Data.allSrs()).filter(s=>s.repetitions>0 || s.lastReviewed).length;
+  let totalCorrect=0, totalAttempts=0;
+  Object.values(Data.allSrs()).forEach(s=>{
+    ['reading','listening','production'].forEach(m=>{ totalCorrect+=s.modalityStats[m].correct; totalAttempts+=s.modalityStats[m].total; });
+  });
+  const accuracy = totalAttempts? Math.round(totalCorrect/totalAttempts*100) : 0;
+  return `
+    <div class="grid-2">
+      <div class="card">
+        <h3>Overview</h3>
+        <table>
+          <tr><td>Total study time</td><td>${Math.round(meta.totalStudySeconds/60)} min</td></tr>
+          <tr><td>Sessions completed</td><td>${meta.sessionsCompleted}</td></tr>
+          <tr><td>Current streak</td><td>${meta.streak} days</td></tr>
+          <tr><td>Longest streak</td><td>${meta.longestStreak} days</td></tr>
+          <tr><td>Overall accuracy</td><td>${accuracy}%</td></tr>
+          <tr><td>Concepts touched</td><td>${totalReviewed} / ${totalConcepts}</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Knowledge</h3>
+        <table>
+          <tr><td><span class="pill teal">Mastered</span></td><td>${k.Mastered}</td></tr>
+          <tr><td><span class="pill gold">Strong</span></td><td>${k.Strong}</td></tr>
+          <tr><td><span class="pill indigo">Familiar</span></td><td>${k.Familiar}</td></tr>
+          <tr><td><span class="pill rust">Learning</span></td><td>${k.Learning}</td></tr>
+          <tr><td><span class="pill">New</span></td><td>${k.New}</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h3>Weak areas</h3>
+      ${weak.length ? weak.slice(0,8).map(w=>`
+        <div class="row" style="align-items:center;margin-bottom:8px;">
+          <span style="width:160px;">${Utils.escapeHtml(w.tag)}</span>
+          <div class="mastery-track col" style="margin:0;"><div class="mastery-fill" style="width:${w.avg}%;background:${w.avg<50?'var(--rust)':'var(--teal)'}"></div></div>
+          <span class="faint" style="width:40px;text-align:right;">${w.avg}%</span>
+        </div>`).join('') : '<p class="faint">Not enough data yet — complete a few reviews first.</p>'}
+    </div>
+  `;
+}
+
+/* ---------- Settings ---------- */
+function viewSettings(){
+  const s = Data.settings();
+  const voices = TTS.voices();
+  return `
+    <div class="card">
+      <h2>Voice &amp; TTS</h2>
+      <label>Language</label>
+      <select id="setLang">
+        ${['en-US','en-GB','de-DE','fr-FR','ja-JP','es-ES'].map(l=>`<option value="${l}" ${s.lang===l?'selected':''}>${l}</option>`).join('')}
+      </select>
+      <label>Voice</label>
+      <select id="setVoice">
+        <option value="">System default</option>
+        ${voices.map(v=>`<option value="${v.name}" ${s.voiceName===v.name?'selected':''}>${v.name} (${v.lang})</option>`).join('')}
+      </select>
+      <label>Speed: <span id="rateLabel">${s.rate}x</span></label>
+      <input type="range" id="setRate" min="0.5" max="1.5" step="0.05" value="${s.rate}">
+      <label>Pitch: <span id="pitchLabel">${s.pitch}</span></label>
+      <input type="range" id="setPitch" min="0.5" max="1.5" step="0.05" value="${s.pitch}">
+      <div class="btn-row"><button class="btn secondary" data-action="test-voice">🔊 Test voice</button></div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h2>Study</h2>
+      <label>New concepts per day (Daily Review)</label>
+      <input type="number" id="setNewPerDay" min="0" max="30" value="${Data.meta().newPerDay}">
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h2>AI explanations</h2>
+      <p class="faint">On demand only: one call per concept, saved inside the concept afterwards. The API key stays in this browser and is never included in backups or exports.</p>
+      <label>Anthropic API key</label>
+      <input type="password" id="aiKey" placeholder="sk-ant-…" autocomplete="off" value="${Utils.escapeHtml(AI.config().apiKey)}">
+      <label>Explanation language</label>
+      <select id="aiLang">${AI.NATIVE_LANGS.map(l=>`<option value="${l}" ${AI.config().nativeLang===l?'selected':''}>${l}</option>`).join('')}</select>
+      <label>Model</label>
+      <select id="aiModel">${AI.MODELS.map(m=>`<option value="${m.id}" ${AI.config().model===m.id?'selected':''}>${m.label}</option>`).join('')}</select>
+      <p class="faint" style="margin-top:12px;" id="aiUsage">Used so far: ${AI.config().usage.calls} calls · ${AI.config().usage.input} input tokens · ${AI.config().usage.output} output tokens</p>
+      <div class="btn-row"><button class="btn ghost" data-action="ai-reset-usage">Reset counter</button></div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h2>Storage &amp; app</h2>
+      <p class="faint" id="storageInfo">Checking…</p>
+      <p class="faint" id="installHint"></p>
+      <div class="btn-row"><button class="btn secondary" id="installBtn" data-action="install-app" style="display:none;">📲 Install app</button></div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h2>Backup</h2>
+      <p class="faint">Content = lessons &amp; concepts. Progress = your SRS state, mistakes, and stats.</p>
+      <div class="btn-row">
+        <button class="btn secondary" data-action="export-content">Export Content</button>
+        <button class="btn secondary" data-action="export-progress">Export Progress</button>
+        <button class="btn secondary" data-action="export-everything">Export Everything</button>
+      </div>
+      <label style="margin-top:16px;">Restore from backup</label>
+      <input type="file" id="restoreFile" accept="application/json">
+    </div>
+  `;
+}
+
+function addConceptModalHtml(){
+  return `
+  <div class="modal-backdrop" data-action="close-modal">
+    <div class="modal" onclick="event.stopPropagation()">
+      <button class="modal-close" data-action="close-modal">✕</button>
+      <h2>New concept</h2>
+      <form id="addConceptForm">
+        <div class="grid-2">
+          <div><label>Expression *</label><input type="text" name="expression" required></div>
+          <div><label>Type *</label><select name="type">
+            <option value="vocabulary">Vocabulary</option><option value="phrasal_verb">Phrasal verb</option>
+            <option value="idiom">Idiom</option><option value="collocation">Collocation</option>
+            <option value="expression">Expression</option><option value="grammar_pattern">Grammar pattern</option>
+          </select></div>
+        </div>
+        <label>Meaning *</label><input type="text" name="meaning" required>
+        <div class="grid-2">
+          <div><label>Language</label><input type="text" name="language" value="en-US"></div>
+          <div><label>Level</label><input type="text" name="level" value="B2"></div>
+        </div>
+        <label>Example sentence</label><input type="text" name="exampleText" placeholder="e.g. I keep putting off my dentist appointment.">
+        <label>Blanked part (must appear exactly in the example)</label><input type="text" name="exampleBlank" placeholder="e.g. putting off">
+        <label>Etymology <span class="faint">(optional)</span></label><textarea name="etymology" placeholder="Where does this expression come from?"></textarea>
+        <label>Tags (comma separated)</label><input type="text" name="tags" placeholder="travel, common">
+        <div class="btn-row"><button type="submit" class="btn">Save concept</button></div>
+      </form>
+    </div>
+  </div>`;
+}
+
+/* ---------- Exercise / Review screens ---------- */
+function progressBarHtml(st){
+  const pct = st.steps.length ? Math.round(st.stepIndex/st.steps.length*100) : 0;
+  return `<div class="faint" style="margin-bottom:6px;">${Math.min(st.stepIndex+1, st.steps.length)} / ${st.steps.length}</div>
+    <div class="mastery-track" style="margin-bottom:18px;"><div class="mastery-fill" style="width:${pct}%"></div></div>`;
+}
+
+function viewConceptCard(conceptId, opts){
+  const st = ReviewSession.state;
+  const c = Data.getConcept(conceptId);
+  const examples = (c.examples||[]).slice(0,2);
+  return `
+  <div class="exercise-shell">
+    ${progressBarHtml(st)}
+    <div class="card">
+      <span class="eyebrow">${opts.eyebrow}</span>
+      <div class="concept-head">
+        <h1 style="margin:0;">${Utils.escapeHtml(c.expression)}</h1>
+        <span class="pill t-${c.type}" style="background:none;">${c.type.replace('_',' ')}</span>
+        <span class="pill">${c.level}</span>
+      </div>
+      ${c.ipa?`<div class="concept-ipa">/${c.ipa}/</div>`:''}
+      <div class="row" style="align-items:center;justify-content:center;margin:14px 0;">
+        <button class="speak-btn" style="margin:0;" data-action="speak" data-text="${Utils.escapeHtml(c.expression)}" data-lang="${c.language}">🔊</button>
+        ${recordWidgetHtml(c.id+':expr')}
+      </div>
+      <p class="prompt-text" style="font-size:1.1rem;">${Utils.escapeHtml(c.meaning)}</p>
+
+      ${examples.length ? `<h3 style="margin-top:18px;">In context</h3>
+      ${examples.map((e,i)=>`
+        <div class="row" style="align-items:center;margin-bottom:8px;">
+          <button class="btn ghost" data-action="speak" data-text="${Utils.escapeHtml(e.text)}" data-lang="${c.language}">🔊</button>
+          ${recordWidgetHtml(c.id+':ex:'+i)}
+          <p style="margin:0;">${Utils.escapeHtml(e.text)}</p>
+        </div>`).join('')}` : ''}
+
+      ${c.etymology ? `<h3 style="margin-top:18px;">Where it comes from</h3><p class="muted">${Utils.escapeHtml(c.etymology)}</p>` : ''}
+
+      ${aiExplainHtml(c, false)}
+
+      <div class="btn-row"><button class="btn" id="introContinueBtn">${opts.buttonLabel}</button></div>
+    </div>
+  </div>`;
+}
+
+function viewExercise(){
+  const st = ReviewSession.state;
+  if(!st) return `<div class="empty-state">No active session. <a href="#/dashboard">Go to dashboard</a></div>`;
+  if(st.done) return viewSessionSummary();
+  if(st.showIntro) return viewConceptCard(st.introConceptId, { eyebrow:'New concept · first time seeing this', buttonLabel:'Start practicing →' });
+  if(st.showMistakeReview) return viewConceptCard(st.mistakeConceptId, { eyebrow:'Quick refresher', buttonLabel:'Continue →' });
+  const ex = st.currentExercise;
+  const concept = ex.concept;
+  const progress = progressBarHtml(st);
+
+  let body = '';
+  // A native-language hint helps most where the learner has to build the sentence from
+  // nothing (word order, error correction, free production) rather than just recognise it.
+  const translationHint = concept.translation
+    ? `<p class="faint" style="font-style:italic;margin:-4px 0 12px;">${Utils.escapeHtml(concept.translation)}</p>` : '';
+  if(ex.type==='fill_blank'){
+    body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
+      <input type="text" class="blank-input" id="answerInput" placeholder="type the missing part" autocomplete="off">`;
+  } else if(ex.type==='multiple_choice'){
+    body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
+      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+  } else if(ex.type==='listening'){
+    body = `<p class="faint">Which expression did you hear?</p>
+      <button class="speak-btn" data-action="speak" data-text="${Utils.escapeHtml(ex.audioText)}" data-lang="${concept.language}">🔊</button>
+      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+  } else if(ex.type==='dictation'){
+    body = `<p class="faint">Listen and write exactly what you hear.</p>
+      <button class="speak-btn" data-action="speak" data-text="${Utils.escapeHtml(ex.audioText)}" data-lang="${concept.language}">🔊</button>
+      <input type="text" class="blank-input" id="answerInput" style="width:100%;" placeholder="type what you heard" autocomplete="off">`;
+  } else if(ex.type==='error_correction'){
+    body = `<p class="faint">Correct the sentence:</p>
+      ${translationHint}
+      <p class="prompt-text">❌ ${Utils.escapeHtml(ex.prompt)}</p>
+      <input type="text" class="blank-input" id="answerInput" style="width:100%;" placeholder="write the correct sentence" autocomplete="off">`;
+  } else if(ex.type==='word_order'){
+    if(st.answered){
+      body = `<p class="faint">Your answer:</p><p class="prompt-text">${Utils.escapeHtml(st.lastInput||'')}</p>`;
+    } else {
+      body = `<p class="faint">Tap a word to place it, tap a placed word to send it back, or drag a placed word between two others to reorder.</p>
+      ${translationHint}
+      <div class="word-answer" id="wordAnswer"></div>
+      <div class="word-bank" id="wordBank"></div>
+      <input type="hidden" id="answerInput" value="">`;
+    }
+  } else if(ex.type==='production'){
+    body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
+      ${translationHint}
+      <textarea class="textarea" id="answerInput" placeholder="Write here…"></textarea>`;
+  }
+
+
+  return `
+  <div class="exercise-shell">
+    ${progress}
+    <div class="card">
+      <span class="eyebrow">${concept.type.replace('_',' ')} · ${ex.type.replace('_',' ')}</span>
+      ${body}
+      ${!st.answered ? `<div class="btn-row"><button class="btn" id="submitAnswer">Check</button></div>` : renderFeedback(st, ex)}
+    </div>
+  </div>`;
+}
+
+function renderFeedback(st, ex){
+  let banner = '';
+  if(ex.type==='production'){
+    banner = `<div class="feedback-banner ok">Reference example: "${Utils.escapeHtml(ex.reference)}"</div>`;
+  } else if(st.isCorrect){
+    banner = `<div class="feedback-banner ok">✅ Correct!</div>`;
+  } else {
+    banner = `<div class="feedback-banner bad">❌ Not quite. Expected: "${Utils.escapeHtml(ex.answers[0])}"</div>`;
+  }
+  return `${banner}
+    <div class="btn-row"><button class="btn" id="continueBtn">Continue →</button></div>`;
+}
+
+function viewSessionSummary(){
+  const st = ReviewSession.state;
+  const total = st.steps.length;
+  const pct = total ? Math.round(st.correctCount/total*100) : 0;
+  return `
+  <div class="exercise-shell">
+    <div class="card" style="text-align:center;">
+      <span class="eyebrow">Session complete</span>
+      <h1>${pct}% accuracy</h1>
+      <p class="muted">${st.correctCount} of ${total} answered correctly.</p>
+      <div class="btn-row" style="justify-content:center;">
+        <a class="btn" href="#/dashboard">Back to dashboard</a>
+        <a class="btn secondary" href="#/stats">View statistics</a>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* =========================================================
+   MAIN RENDER / EVENT WIRING
+   ========================================================= */
+function render(){
+  renderNav();
+  const [path, query] = location.hash.replace('#/','').split('?');
+  const parts = path.split('/');
+  const view = document.getElementById('view');
+  let html = '';
+  switch(parts[0]){
+    case '': case 'dashboard': html = viewDashboard(); break;
+    case 'library': html = parts[1] ? viewConceptDetail(parts[1]) : viewLibrary(query); break;
+    case 'lessons': html = parts[1] ? viewLessonDetail(parts[1]) : viewLessons(); break;
+    case 'mistakes': html = viewMistakes(); break;
+    case 'stats': html = viewStats(); break;
+    case 'settings': html = viewSettings(); break;
+    case 'review': html = viewExercise(); break;
+    default: html = viewDashboard();
+  }
+  view.innerHTML = html;
+  wireView(parts[0], query);
+}
+
+function wireView(route, query){
+  if(route==='settings') wireSettings();
+  if(route==='review') wireExercise();
+  if(route==='library' && !location.hash.includes('/library/')){
+    const el = document.getElementById('libSearch');
+    if(el) el.addEventListener('input', debounce(e=>{
+      const params = new URLSearchParams(query||'');
+      params.set('q', e.target.value);
+      if(!e.target.value) params.delete('q');
+      location.hash = '#/library?'+params.toString();
+    }, 350));
+  }
+}
+
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+function wireSettings(){
+  const s = Data.settings();
+  const bind = (id, key, isNum)=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', e=>{
+      s[key] = isNum ? parseFloat(e.target.value) : (e.target.value||null);
+      Data.saveSettings();
+      if(id==='setRate') document.getElementById('rateLabel').textContent = s.rate+'x';
+      if(id==='setPitch') document.getElementById('pitchLabel').textContent = s.pitch;
+    });
+  };
+  bind('setLang','lang'); bind('setVoice','voiceName'); bind('setRate','rate',true); bind('setPitch','pitch',true);
+  const aiBind = (id, key)=>{
+    const el = document.getElementById(id);
+    if(el) el.addEventListener('change', e=>{ AI.config()[key] = e.target.value.trim(); AI.save(); });
+  };
+  aiBind('aiKey','apiKey'); aiBind('aiLang','nativeLang'); aiBind('aiModel','model');
+  Storage.info().then(i=>{
+    const el = document.getElementById('storageInfo'); if(!el) return;
+    const mb = n=>n==null ? '?' : (n>=1073741824 ? (n/1073741824).toFixed(1)+' GB' : (n/1048576).toFixed(1)+' MB');
+    el.textContent = (i.mode==='idb' ? 'IndexedDB' : 'localStorage (fallback, ~5 MB limit)')
+      + ' · persistent: ' + (i.persisted==null ? 'unknown' : (i.persisted ? 'yes' : 'no'))
+      + (i.usage!=null ? ' · ' + mb(i.usage) + ' used of ' + mb(i.quota) : '');
+  });
+  const ib = document.getElementById('installBtn'), ih = document.getElementById('installHint');
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
+  if(ib && deferredInstall) ib.style.display = '';
+  if(ih){
+    if(standalone) ih.textContent = 'Running as an installed app.';
+    else if(!/^https?:$/.test(location.protocol)) ih.textContent = 'To install, serve the app over HTTPS (e.g. GitHub Pages).';
+    else if(/iphone|ipad|ipod/i.test(navigator.userAgent)) ih.textContent = 'On iOS: Share → Add to Home Screen.';
+  }
+  const npd = document.getElementById('setNewPerDay');
+  if(npd) npd.addEventListener('change', e=>{ Data.meta().newPerDay = parseInt(e.target.value)||0; Data.saveMeta(); });
+  const restore = document.getElementById('restoreFile');
+  if(restore) restore.addEventListener('change', e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{ const obj = JSON.parse(reader.result); Data.restoreBackup(obj); Utils.toast('Backup restored.'); render(); }
+      catch(err){ Utils.toast('Could not read backup file.'); }
+    };
+    reader.readAsText(f);
+  });
+}
+
+/* Word-order exercise: tap a bank word to place it in the answer, tap a placed word to
+   send it back to the bank, or drag a placed word and drop it between two other placed
+   words to reorder. Uses pointer events (not native HTML5 drag) so touch works too. */
+function wireWordOrder(ex){
+  const bank = document.getElementById('wordBank');
+  const answerEl = document.getElementById('wordAnswer');
+  const hidden = document.getElementById('answerInput');
+  let chosen = []; // ordered list of indices into ex.words
+
+  function syncHidden(){ hidden.value = chosen.map(i=>ex.words[i]).join(' '); }
+
+  function returnToBank(i, chip){
+    chosen = chosen.filter(x=>x!==i);
+    chip.remove();
+    const bankChip = bank.querySelector(`.word-chip[data-idx="${i}"]`);
+    if(bankChip) bankChip.classList.remove('used');
+    syncHidden();
+  }
+
+  function makeAnswerChip(i){
+    const chip = document.createElement('span');
+    chip.className = 'word-chip answer-chip';
+    chip.textContent = ex.words[i];
+    chip.dataset.idx = i;
+    let dragging = false, moved = false;
+
+    chip.addEventListener('pointerdown', e=>{
+      dragging = true; moved = false;
+      chip.classList.add('dragging');
+      if(chip.setPointerCapture){ try{ chip.setPointerCapture(e.pointerId); }catch(err){} }
+    });
+    chip.addEventListener('pointermove', e=>{
+      if(!dragging || !document.elementFromPoint) return;
+      const target = document.elementFromPoint(e.clientX, e.clientY);
+      const targetChip = target && target.closest ? target.closest('.answer-chip') : null;
+      if(targetChip && targetChip!==chip && answerEl.contains(targetChip)){
+        const rect = targetChip.getBoundingClientRect();
+        const before = e.clientX < rect.left + rect.width/2;
+        answerEl.insertBefore(chip, before ? targetChip : targetChip.nextSibling);
+        chosen = Array.from(answerEl.children).map(c=>parseInt(c.dataset.idx,10));
+        syncHidden();
+        moved = true;
+      }
+    });
+    const endDrag = ()=>{ dragging = false; chip.classList.remove('dragging'); };
+    chip.addEventListener('pointerup', endDrag);
+    chip.addEventListener('pointercancel', endDrag);
+    chip.addEventListener('click', ()=>{
+      if(moved){ moved = false; return; } // a drag just happened — don't also treat it as a tap
+      returnToBank(i, chip);
+    });
+    return chip;
+  }
+
+  function makeBankChip(i){
+    const chip = document.createElement('span');
+    chip.className = 'word-chip';
+    chip.textContent = ex.words[i];
+    chip.dataset.idx = i;
+    chip.addEventListener('click', ()=>{
+      if(chosen.includes(i)) return;
+      chosen.push(i);
+      chip.classList.add('used');
+      answerEl.appendChild(makeAnswerChip(i));
+      syncHidden();
+    });
+    return chip;
+  }
+
+  bank.innerHTML = ''; answerEl.innerHTML = '';
+  ex.words.forEach((w,i)=> bank.appendChild(makeBankChip(i)));
+  syncHidden();
+}
+
+function wireExercise(){
+  const st = ReviewSession.state;
+  if(!st || st.done) return;
+  if(st.showIntro || st.showMistakeReview){
+    const btn = document.getElementById('introContinueBtn');
+    if(btn) btn.addEventListener('click', ()=>{
+      if(st.showIntro) ReviewSession.confirmIntro(); else ReviewSession.confirmMistakeReview();
+      if(ReviewSession.state.done) ReviewSession.finish();
+      render();
+    });
+    return;
+  }
+  const ex = st.currentExercise;
+  document.querySelectorAll('.option').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      if(st.answered) return;
+      document.querySelectorAll('.option').forEach(b=>b.classList.remove('selected'));
+      btn.classList.add('selected');
+      const val = btn.dataset.option;
+      const isCorrect = ReviewSession.submit(val);
+      document.querySelectorAll('.option').forEach(b=>{
+        if(Utils.normalize(b.dataset.option)===Utils.normalize(ex.answers[0])) b.classList.add('correct');
+        else if(b===btn && !isCorrect) b.classList.add('incorrect');
+      });
+      render();
+    });
+  });
+  const submitBtn = document.getElementById('submitAnswer');
+  if(submitBtn){
+    submitBtn.addEventListener('click', ()=>{
+      const input = document.getElementById('answerInput');
+      const val = input ? input.value : '';
+      ReviewSession.submit(val);
+      render();
+    });
+  }
+  if(ex.type==='word_order' && !st.answered){
+    wireWordOrder(ex);
+  }
+  const continueBtn = document.getElementById('continueBtn');
+  if(continueBtn){
+    continueBtn.addEventListener('click', ()=>{
+      ReviewSession.continueFromExercise();
+      if(ReviewSession.state.done) ReviewSession.finish();
+      render();
+    });
+  }
+  const inp = document.getElementById('answerInput');
+  if(inp && !st.answered && (ex.type==='fill_blank' || ex.type==='dictation' || ex.type==='error_correction' || ex.type==='production')){
+    inp.focus();
+  }
+}
+
+/* Global click delegate for data-action buttons */
+document.addEventListener('click', e=>{
+  const el = e.target.closest('[data-action]');
+  if(!el) return;
+  const action = el.dataset.action;
+  if(action==='start-review'){
+    const mode = el.dataset.mode;
+    const opts = {};
+    if(el.dataset.lesson) opts.lessonId = el.dataset.lesson;
+    const started = ReviewSession.start(mode, opts);
+    if(!started){ Utils.toast('Nothing to review for this mode yet.'); return; }
+    location.hash = '#/review';
+  }
+  else if(action==='open-concept'){ location.hash = '#/library/'+el.dataset.id; }
+  else if(action==='view-lesson'){ location.hash = '#/lessons/'+el.dataset.id; }
+  else if(action==='speak'){ TTS.speak(el.dataset.text, {lang:el.dataset.lang}); }
+  else if(action==='test-voice'){ TTS.speak('This is a test of the current voice settings.'); }
+  else if(action==='record-toggle'){
+    const key = el.dataset.key;
+    if(Recorder.isRecording()){
+      if(Recorder.activeKey()===key) Recorder.stop();
+      return;
+    }
+    el.textContent = '⏺';
+    el.classList.add('recording');
+    Recorder.start(key, ()=>{
+      el.textContent = '🎤';
+      el.classList.remove('recording');
+      const playBtn = el.parentElement.querySelector('.play-btn');
+      if(playBtn) playBtn.classList.remove('hidden');
+    });
+  }
+  else if(action==='record-play'){ Recorder.play(el.dataset.key); }
+  else if(action==='open-import'){ openModal(importModalHtml()); wireImportModal(); }
+  else if(action==='open-add-concept'){ openModal(addConceptModalHtml()); wireAddConceptModal(); }
+  else if(action==='close-modal'){ closeModal(); }
+  else if(action==='ai-explain'){
+    const id = el.dataset.id, expanded = !!el.dataset.expanded;
+    const c = Data.getConcept(id);
+    if(!c || AI.isPending(id)) return;
+    if(!AI.hasKey()){ Utils.toast('Añade tu API key en Settings.'); return; }
+    const host = ()=>document.getElementById('aiHost_'+id);   // may be gone if the user moved on
+    el.disabled = true; el.textContent = 'Generando…';
+    AI.explain(id).then(()=>{
+      const h = host(); if(h) h.innerHTML = aiExplainInner(c, expanded);
+      if(h && !expanded){ const d = h.querySelector('details'); if(d) d.open = true; }
+    }).catch(err=>{
+      const h = host();
+      if(h){
+        h.innerHTML = aiExplainInner(c, expanded) + `<div class="ai-error">${Utils.escapeHtml(err.message)}</div>`;
+      } else Utils.toast(err.message);
+    });
+  }
+  else if(action==='install-app'){
+    if(!deferredInstall) return;
+    deferredInstall.prompt();
+    deferredInstall.userChoice.finally(()=>{ deferredInstall = null; el.style.display = 'none'; });
+  }
+  else if(action==='ai-reset-usage'){
+    AI.resetUsage();
+    const u = document.getElementById('aiUsage'); if(u) u.textContent = 'Used so far: 0 calls · 0 input tokens · 0 output tokens';
+  }
+  else if(action==='export-content'){ Utils.download('lingua-field-content.json', Data.exportContent()); }
+  else if(action==='export-progress'){ Utils.download('lingua-field-progress.json', Data.exportProgress()); }
+  else if(action==='export-everything'){ Utils.download('lingua-field-backup.json', Data.exportEverything()); }
+});
+
+function openModal(html){
+  let holder = document.getElementById('modalHolder');
+  if(!holder){ holder = document.createElement('div'); holder.id='modalHolder'; document.body.appendChild(holder); }
+  holder.innerHTML = html;
+}
+function closeModal(){ const h = document.getElementById('modalHolder'); if(h) h.innerHTML=''; }
+
+function wireImportModal(){
+  const file = document.getElementById('importFile');
+  file.addEventListener('change', e=>{
+    const f = e.target.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      let obj;
+      try{ obj = JSON.parse(reader.result); }
+      catch(err){ document.getElementById('importErrors').textContent = 'Invalid JSON: '+err.message; return; }
+      const result = JSONImporter.install(obj);
+      if(!result.ok){
+        document.getElementById('importErrors').innerHTML = result.errors.map(Utils.escapeHtml).join('<br>');
+      } else {
+        Utils.toast('Lesson "'+result.lesson.title+'" installed.');
+        closeModal(); render();
+      }
+    };
+    reader.readAsText(f);
+  });
+}
+
+function wireAddConceptModal(){
+  const form = document.getElementById('addConceptForm');
+  form.addEventListener('submit', e=>{
+    e.preventDefault();
+    const fd = new FormData(form);
+    const id = Utils.uid('c_'+Utils.normalize(fd.get('expression')).replace(/\s+/g,'_'));
+    const exText = fd.get('exampleText');
+    const exBlank = fd.get('exampleBlank');
+    const examples = exText ? [{ text:exText, blank: exBlank||exText, answers:[exBlank||exText] }] : [];
+    const concept = {
+      id, language: fd.get('language')||'en-US', level: fd.get('level')||'B2', type: fd.get('type'),
+      expression: fd.get('expression'), meaning: fd.get('meaning'), translation:'', notes:'', ipa:'',
+      etymology: fd.get('etymology')||'',
+      patterns:[], examples, commonMistakes:[], synonyms:[], antonyms:[], related:[],
+      tags: (fd.get('tags')||'').split(',').map(t=>t.trim()).filter(Boolean)
+    };
+    Data.upsertConcept(concept);
+    let mine = Data.getLesson('lesson_my_concepts');
+    if(!mine){ mine = { id:'lesson_my_concepts', version:1, language:concept.language, title:'My Concepts', level:'—', description:'Concepts you added yourself.', tags:[], prerequisites:[], conceptIds:[] }; }
+    mine.conceptIds.push(id);
+    Data.upsertLesson(mine);
+    Utils.toast('Concept saved.');
+    closeModal();
+    location.hash = '#/library/'+id;
+  });
+}
+
+/* Enter key drives the review flow: submits the current answer, continues once feedback
+   is showing, or acknowledges an intro/refresher card. Skipped while typing inside a
+   textarea (production exercises) so it doesn't fight multi-line input. */
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const st = ReviewSession.state;
+  if(!st || st.done) return;
+  if(e.target && e.target.tagName==='TEXTAREA') return;
+  if(e.target && e.target.closest && e.target.closest('.ai-box, .ai-host')) return;
+  if(st.showIntro || st.showMistakeReview){
+    const btn = document.getElementById('introContinueBtn');
+    if(btn) btn.click();
+    return;
+  }
+  if(st.answered){
+    const btn = document.getElementById('continueBtn');
+    if(btn) btn.click();
+  } else {
+    const btn = document.getElementById('submitAnswer');
+    if(btn) btn.click();
+  }
+});
+
+window.addEventListener('hashchange', render);
+window.addEventListener('DOMContentLoaded', ()=>{
+  if(!location.hash) location.hash = '#/dashboard';
+  render();
+});
+if(document.readyState !== 'loading'){ if(!location.hash) location.hash = '#/dashboard'; render(); }
+
+/* Service worker (PWA). Needs http(s): it does nothing on file://. */
+if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)){
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(hadController) Utils.toast('New version installed. Reload to apply it.');
+    hadController = true;
+  });
+  const reg = ()=>navigator.serviceWorker.register('./sw.js').catch(e=>console.warn('SW registration failed', e));
+  if(document.readyState==='complete') reg(); else window.addEventListener('load', reg);
+}
+
+})().catch(err=>{
+  console.error(err);
+  const v = document.getElementById('view');
+  if(v) v.innerHTML = '<div class="empty-state">Could not start the app: '+String(err && err.message || err)+'</div>';
+});
+</script>
+</body>
+</html>
