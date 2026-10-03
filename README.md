@@ -108,7 +108,7 @@ La importación se rechaza, con un mensaje por problema, si falta `formatVersion
 
 ## IA (Gemini)
 
-Todo bajo demanda, nunca durante los ejercicios ni al importar. Se configura en **Settings → AI (Gemini)**: API key, idioma de la explicación y modelo (por defecto `gemini-2.5-flash`; puedes escribir cualquier otro id de modelo de Gemini).
+Todo bajo demanda, nunca durante los ejercicios ni al importar. Se configura en **Settings → AI (Gemini)**: API key, idioma de la explicación y modelo (por defecto el alias `gemini-flash-latest`, que no se retira con cada versión; puedes escribir cualquier otro id). El botón **Detect models** consulta a la API qué modelos puede usar tu key; si el modelo guardado deja de existir, la app lo detecta y cambia sola a uno disponible.
 
 - **Explicación de un concepto**: botón **✨ Explicar con IA** en el detalle del concepto y en las tarjetas de presentación y repaso. Genera uso, registro, gramática, errores típicos y contraste con tu idioma. Se guarda en `concept.explanation`.
 - **Descripción de una lección**: botón **✨ Generar descripción con IA** en el detalle de la lección. Se guarda en `lesson.description`. Si la descripción venía de un archivo importado, pide confirmación antes de reemplazarla.

@@ -743,9 +743,9 @@ const JSONImporter = {
 const AI = (function(){
   const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/';
   const MODELS = [
-    { id:'gemini-2.5-flash', label:'Gemini 2.5 Flash (default)' },
-    { id:'gemini-2.5-flash-lite', label:'Gemini 2.5 Flash-Lite (cheapest)' },
-    { id:'gemini-2.5-pro', label:'Gemini 2.5 Pro (best quality)' }
+    { id:'gemini-flash-latest', label:'Flash (latest, default)' },
+    { id:'gemini-flash-lite-latest', label:'Flash-Lite (latest, cheapest)' },
+    { id:'gemini-pro-latest', label:'Pro (latest, best quality)' }
   ];
   const NATIVE_LANGS = ['Spanish','English','Portuguese','French','Italian','German'];
   const defaults = { provider:'gemini', apiKey:'', model:MODELS[0].id, nativeLang:'Spanish', usage:{ calls:0, input:0, output:0 } };
@@ -762,13 +762,42 @@ const AI = (function(){
   function hasKey(){ return !!(cfg.apiKey && cfg.apiKey.trim()); }
   const SYSTEM = 'You are a concise, practical language teacher. Respond with ONLY a valid JSON object: no markdown fences, no preamble.';
 
+  /* ---- model discovery: ask the API which models this key can really use ---- */
+  async function listModels(){
+    if(!hasKey()) throw new Error('Primero pega tu API key.');
+    let res;
+    try{ res = await fetch(ENDPOINT.replace(/\/$/, '') + '?pageSize=1000', { headers:{ 'x-goog-api-key':cfg.apiKey.trim() } }); }
+    catch(e){ throw new Error('Sin conexión o petición bloqueada.'); }
+    if(!res.ok){
+      let detail = ''; try{ const j = await res.json(); detail = j && j.error && j.error.message ? j.error.message : ''; }catch(e){}
+      if(res.status===400 || res.status===401 || res.status===403) throw new Error('API key inválida o sin permisos.');
+      throw new Error('Error '+res.status+(detail?': '+detail:''));
+    }
+    const data = await res.json();
+    return (data.models || [])
+      .filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent'))
+      .map(m=>String(m.name).replace(/^models\//,''))
+      .filter(id=>/^gemini/.test(id) && !/embedding|tts|image|live|audio|imagen|veo|aqa|robotics|computer-use|native/.test(id))
+      .sort();
+  }
+  function pickDefault(ids){
+    if(!ids || !ids.length) return null;
+    if(ids.includes('gemini-flash-latest')) return 'gemini-flash-latest';   // alias: never retired
+    const ver = id=>{ const m = id.match(/gemini-(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : 0; };
+    const stable = ids.filter(id=>/flash/.test(id) && !/lite|preview|exp/.test(id)).sort((x,y)=>ver(y)-ver(x));
+    if(stable.length) return stable[0];
+    const lite = ids.filter(id=>/flash/.test(id)).sort((x,y)=>ver(y)-ver(x));
+    return lite[0] || ids[0];
+  }
+
   /* ---- one generic call; returns the raw text of the answer ---- */
-  async function callGemini(userText, maxOut){
+  async function callGemini(userText, maxOut, opt){
+    opt = opt || {};
     if(!hasKey()) throw new Error('Falta la API key de Gemini. Añádela en Settings.');
     const model = (cfg.model || defaults.model).trim();
     const gen = { maxOutputTokens:maxOut, temperature:0.4, responseMimeType:'application/json' };
     // 2.5 Flash "thinks" by default and thinking tokens are billed: switch it off for these short tasks.
-    if(/gemini-2\.5-flash(?!-lite)/.test(model)) gen.thinkingConfig = { thinkingBudget:0 };
+    if(!opt.noThink && /gemini-2\.5-flash(?!-lite)/.test(model)) gen.thinkingConfig = { thinkingBudget:0 };
     let res;
     try{
       res = await fetch(ENDPOINT + encodeURIComponent(model) + ':generateContent', {
@@ -784,8 +813,22 @@ const AI = (function(){
     if(!res.ok){
       let detail = '';
       try{ const j = await res.json(); detail = j && j.error && j.error.message ? j.error.message : ''; }catch(e){}
+      if(res.status===400 && /thinking/i.test(detail) && !opt.noThink) return callGemini(userText, maxOut, Object.assign({}, opt, { noThink:true }));
       if((res.status===400 && /api key/i.test(detail)) || res.status===401 || res.status===403) throw new Error('API key inválida o sin permisos.');
-      if(res.status===404) throw new Error('Modelo no encontrado: '+model+'. Revísalo en Settings.');
+      if(res.status===404){
+        // The model was probably retired: look up what is available and retry once with the best one.
+        if(!opt.recovered){
+          let alt = null;
+          try{ alt = pickDefault(await listModels()); }catch(e){}
+          if(alt && alt!==model){
+            cfg.model = alt; save();
+            const mi = document.getElementById('aiModel'); if(mi) mi.value = alt;
+            Utils.toast('Modelo '+model+' no disponible. Usando '+alt+'.');
+            return callGemini(userText, maxOut, Object.assign({}, opt, { recovered:true }));
+          }
+        }
+        throw new Error('Modelo no encontrado: '+model+'. Usa "Detect models" en Settings.');
+      }
       if(res.status===429) throw new Error('Límite de uso alcanzado, inténtalo en un momento.');
       throw new Error('Error '+res.status+(detail?': '+detail:''));
     }
@@ -891,7 +934,7 @@ Return ONLY a JSON object: {"description": "..."}`;
   }
 
   return {
-    MODELS, NATIVE_LANGS, explain, describeLesson, hasKey,
+    MODELS, NATIVE_LANGS, explain, describeLesson, hasKey, listModels, pickDefault,
     config: ()=>cfg, save,
     isPending: id=>!!pending[id],
     resetUsage(){ cfg.usage = { calls:0, input:0, output:0 }; save(); }
@@ -1826,7 +1869,8 @@ function viewSettings(){
       <label>Model</label>
       <input type="text" id="aiModel" list="aiModels" autocomplete="off" value="${Utils.escapeHtml(AI.config().model)}">
       <datalist id="aiModels">${AI.MODELS.map(m=>`<option value="${m.id}">${m.label}</option>`).join('')}</datalist>
-      <p class="faint">Pick one or type any Gemini model id.</p>
+      <div class="btn-row"><button class="btn secondary" data-action="ai-detect-models">Detect models</button></div>
+      <p class="faint" id="aiModelStatus">Pick one, type any Gemini model id, or detect the ones your key can use.</p>
       <p class="faint" style="margin-top:12px;" id="aiUsage">Used so far: ${AI.config().usage.calls} calls · ${AI.config().usage.input} input tokens · ${AI.config().usage.output} output tokens</p>
       <div class="btn-row"><button class="btn ghost" data-action="ai-reset-usage">Reset counter</button></div>
     </div>
@@ -2283,6 +2327,25 @@ document.addEventListener('click', e=>{
         h.innerHTML = aiExplainInner(c, expanded) + `<div class="ai-error">${Utils.escapeHtml(err.message)}</div>`;
       } else Utils.toast(err.message);
     });
+  }
+  else if(action==='ai-detect-models'){
+    const st = document.getElementById('aiModelStatus'), mi = document.getElementById('aiModel'), ki = document.getElementById('aiKey');
+    if(ki && ki.value.trim() !== AI.config().apiKey){ AI.config().apiKey = ki.value.trim(); AI.save(); }
+    if(!AI.hasKey()){ if(st) st.textContent = 'Primero pega tu API key.'; return; }
+    el.disabled = true; if(st) st.textContent = 'Consultando…';
+    AI.listModels().then(ids=>{
+      const dl = document.getElementById('aiModels');
+      if(dl) dl.innerHTML = ids.map(id=>`<option value="${Utils.escapeHtml(id)}"></option>`).join('');
+      let msg = ids.length + ' models available: ' + ids.slice(0,8).join(', ') + (ids.length>8 ? '…' : '') + '.';
+      const cur = AI.config().model;
+      if(ids.length && !ids.includes(cur)){
+        const best = AI.pickDefault(ids);
+        AI.config().model = best; AI.save(); if(mi) mi.value = best;
+        msg += ' "' + cur + '" is not available, switched to ' + best + '.';
+      }
+      if(st) st.textContent = msg;
+    }).catch(err=>{ if(st) st.textContent = err.message; })
+      .finally(()=>{ el.disabled = false; });
   }
   else if(action==='ai-describe-lesson'){
     const id = el.dataset.id, l = Data.getLesson(id);
