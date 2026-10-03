@@ -1,15 +1,121 @@
-# Lingua Field (PWA)
+# Lingua Field
 
-Archivos: `index.html`, `sw.js`, `manifest.webmanifest`, `icons/`. Súbelos juntos, en la misma carpeta.
+App personal de aprendizaje de idiomas por contexto. Sin build ni backend: todo el código vive en un único `index.html` (HTML + CSS + JS) y los datos se guardan en el propio navegador.
 
-## Publicar gratis (GitHub Pages)
-1. Crea un repositorio y sube estos archivos a la raíz.
-2. Settings → Pages → Deploy from branch → `main` / root.
-3. Abre la URL https://usuario.github.io/repositorio/ y usa "Instalar" (Android/Chrome) o Compartir → "Añadir a pantalla de inicio" (iOS).
+## Archivos del paquete
 
-## Pasar tus datos del archivo local a la URL
-El navegador trata `file://` y la URL como apps distintas. En el archivo viejo: Settings → Export Everything.
-En la URL nueva: Settings → Restore from backup. (La API key no va en el backup: vuelve a pegarla.)
+| Archivo | Para qué sirve |
+|---|---|
+| `index.html` | La app completa: interfaz, lógica, ejercicios, SRS e importador. |
+| `sw.js` | Service worker. Guarda la app en caché para abrirla sin conexión. Cambia `VERSION` cuando modifiques `index.html`. |
+| `manifest.webmanifest` | Nombre, colores e iconos para instalarla como app. |
+| `icons/` | Iconos de la app (192, 512, maskable y apple-touch). |
 
-## Actualizar
-Sube el nuevo `index.html` y cambia `VERSION` en `sw.js` (v1 → v2). Con conexión, la app carga la versión nueva.
+`sw.js` y la instalación solo funcionan servidos por `http(s)`. Abierta directamente como archivo local, la app funciona igual pero sin modo offline ni instalación.
+
+## Estructura de `index.html`
+
+Los módulos van en este orden dentro del script:
+
+- **Utils**: utilidades (escape de HTML, toasts, descargas).
+- **Storage**: capa de almacenamiento. Usa IndexedDB, cargada en memoria al arrancar para que las lecturas sigan siendo síncronas. Si IndexedDB no está disponible, usa `localStorage`.
+- **Data**: conceptos, lecciones, SRS, errores, estadísticas, exportación y backup.
+- **JSONImporter**: validación e instalación de lecciones en JSON.
+- **AI**: llamadas a Gemini (ver más abajo).
+- **TTS**: voz con Web Speech API.
+- **Sesiones y vistas**: ejercicios, repetición espaciada, páginas y manejo de eventos.
+
+## Dónde se guardan los datos
+
+IndexedDB `lingua-field`, almacén `kv`, con estas claves: `concepts`, `lessons`, `srs`, `mistakes`, `meta`, `settings` y `ai`. Los datos son propios de cada origen: el archivo local y una URL publicada son apps distintas, así que para pasar datos entre ellas usa **Settings → Export Everything** y **Restore from backup**.
+
+La clave `ai` (API key de Gemini, modelo y contador de uso) **no entra en ningún backup ni exportación**.
+
+## Formato del archivo de lección (importar)
+
+Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons → Import Lesson (JSON)**.
+
+```json
+{
+  "formatVersion": "1.0",
+  "lesson": {
+    "id": "lesson_airports",
+    "title": "Airports",
+    "language": "en-US",
+    "level": "B2",
+    "objectives": [
+      "Pedir ayuda en el aeropuerto",
+      "Usar check in / check out con naturalidad"
+    ],
+    "description": "Opcional. Si no la incluyes, puedes generarla con IA."
+  },
+  "concepts": [
+    {
+      "id": "concept_check_in",
+      "type": "phrasal_verb",
+      "expression": "check in",
+      "meaning": "to register on arrival at a hotel or airport",
+      "translation": "registrarse",
+      "level": "B2",
+      "ipa": "/tʃek ɪn/",
+      "etymology": "Opcional: de dónde viene la expresión.",
+      "patterns": ["check in (at + place)"],
+      "examples": [
+        { "text": "We checked in two hours early.", "blank": "checked in", "answers": ["checked in"] }
+      ],
+      "commonMistakes": [
+        { "wrong": "We checked at the hotel.", "correct": "We checked in at the hotel." }
+      ],
+      "synonyms": [],
+      "antonyms": ["check out"],
+      "related": [],
+      "tags": ["travel"]
+    }
+  ]
+}
+```
+
+### Campos de `lesson`
+
+| Campo | Obligatorio | Descripción |
+|---|---|---|
+| `id` | sí | Identificador único. Reimportar el mismo `id` actualiza la lección. |
+| `title` | sí | Título. |
+| `language` | sí | Código de idioma, por ejemplo `en-US`. |
+| `level` | no | Nivel (B2, C1…). |
+| `objectives` | no | Array de textos no vacíos con lo que el alumno podrá hacer. Se muestran en la lección y sirven de base para generar la descripción con IA. |
+| `description` | no | Texto. Si falta, el botón **✨ Generar descripción con IA** de la lección la crea a partir de los objetivos (y de los conceptos si no hay objetivos). |
+| `tags`, `prerequisites` | no | Arrays de textos. |
+
+### Campos de cada concepto
+
+- **Obligatorios**: `id` (único en el archivo), `type`, `expression`, `meaning`.
+- **`type`**: `vocabulary`, `phrasal_verb`, `idiom`, `collocation`, `expression`, `grammar_pattern` o `sentence_pattern`.
+- **Opcionales**: `level` (por defecto B2), `translation`, `ipa`, `etymology`, `notes`, `patterns`, `examples`, `commonMistakes`, `synonyms`, `antonyms`, `related`, `tags`.
+- **`examples`**: array de `{ text, blank, answers }`. `blank` es el fragmento que se oculta en los ejercicios de completar y `answers` las respuestas válidas.
+- **`commonMistakes`**: array de `{ wrong, correct }`, usado en los ejercicios de corrección de errores.
+
+### Qué pasa al reimportar
+
+- Un concepto sin `language` hereda el de la lección.
+- Si el archivo trae `description`, sustituye a la actual. Si no la trae, **se conserva la que ya tenía la lección** (por ejemplo, una generada con IA).
+- Los conceptos reimportados conservan su explicación generada con IA si el archivo no incluye una.
+- Los `objectives` siempre se reemplazan por los del archivo.
+
+### Errores de validación
+
+La importación se rechaza, con un mensaje por problema, si falta `formatVersion`, `lesson`, `lesson.id`, `lesson.title` o `lesson.language`; si `concepts` está vacío; si un concepto no tiene `id`, `expression`, `meaning` o `type`, o repite un `id`; si `examples` no es un array; si `objectives` no es un array de textos no vacíos; o si `description` no es un texto.
+
+## IA (Gemini)
+
+Todo bajo demanda, nunca durante los ejercicios ni al importar. Se configura en **Settings → AI (Gemini)**: API key, idioma de la explicación y modelo (por defecto `gemini-2.5-flash`; puedes escribir cualquier otro id de modelo de Gemini).
+
+- **Explicación de un concepto**: botón **✨ Explicar con IA** en el detalle del concepto y en las tarjetas de presentación y repaso. Genera uso, registro, gramática, errores típicos y contraste con tu idioma. Se guarda en `concept.explanation`.
+- **Descripción de una lección**: botón **✨ Generar descripción con IA** en el detalle de la lección. Se guarda en `lesson.description`. Si la descripción venía de un archivo importado, pide confirmación antes de reemplazarla.
+
+La petición sale directamente del navegador hacia la API de Gemini, y Settings muestra un contador de llamadas y tokens usados.
+
+## Exportar
+
+- **Export Everything**: contenido, progreso y configuración (sin la API key).
+- **Export Content**: lecciones y conceptos.

@@ -224,6 +224,11 @@ th{color:var(--ink-soft);font-weight:600;font-size:.76rem;text-transform:upperca
 .checkbox-row input{width:auto;}
 hr.rule{border:none;border-top:1px solid var(--line);margin:18px 0;}
 
+/* lessons */
+.clamp-3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.pre-line{white-space:pre-line;}
+ul.objectives{margin:4px 0 10px;padding-left:20px;font-size:.92rem;}
+ul.objectives li{margin:2px 0;}
 /* AI explanations */
 .ai-box{margin-top:18px;}
 .ai-box > summary{cursor:pointer;color:var(--indigo);font-weight:600;font-size:.88rem;padding:6px 0;}
@@ -680,6 +685,11 @@ const JSONImporter = {
       if(!obj.lesson.id) errors.push('lesson.id es obligatorio.');
       if(!obj.lesson.title) errors.push('lesson.title es obligatorio.');
       if(!obj.lesson.language) errors.push('lesson.language es obligatorio (ej. "en-US").');
+      const ob = obj.lesson.objectives;
+      if(ob!==undefined && (!Array.isArray(ob) || ob.some(o=>typeof o!=='string' || !o.trim())))
+        errors.push('lesson.objectives debe ser un array de textos no vacíos.');
+      if(obj.lesson.description!==undefined && typeof obj.lesson.description!=='string')
+        errors.push('lesson.description debe ser un texto.');
     }
     if(!Array.isArray(obj.concepts) || obj.concepts.length===0) errors.push('"concepts" debe ser un array con al menos un elemento.');
     else{
@@ -709,32 +719,103 @@ const JSONImporter = {
       if(prev && prev.explanation && !full.explanation) full.explanation = prev.explanation;
       Data.upsertConcept(full);
     });
-    const lesson = Object.assign({ version:1, language:lang, tags:[], prerequisites:[] }, obj.lesson,
+    const lesson = Object.assign({ version:1, language:lang, tags:[], prerequisites:[], objectives:[] }, obj.lesson,
       { conceptIds: obj.concepts.map(c=>c.id) });
+    lesson.objectives = lesson.objectives.map(o=>o.trim());
+    const prevLesson = Data.getLesson(lesson.id);
+    const hasNewDesc = typeof obj.lesson.description==='string' && obj.lesson.description.trim();
+    if(hasNewDesc){ lesson.description = obj.lesson.description.trim(); }
+    else if(prevLesson && prevLesson.description){          // keep a description generated earlier
+      lesson.description = prevLesson.description;
+      if(prevLesson.descriptionSource) lesson.descriptionSource = prevLesson.descriptionSource;
+    }
     Data.upsertLesson(lesson);
     return { ok:true, lesson };
   }
 };
 
 /* =========================================================
-   AI EXPLANATIONS  (on demand, one concept at a time, cached in concept.explanation)
+   AI  (Google Gemini, called straight from the browser, on demand only)
+   - concept explanation: one call per concept, cached in concept.explanation
+   - lesson description: one call per lesson, built from its objectives, cached in lesson.description
    The API key lives under its own Storage key ('ai'), so it is NOT part of any export/backup.
    ========================================================= */
 const AI = (function(){
+  const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/';
   const MODELS = [
-    { id:'claude-haiku-4-5-20251001', label:'Haiku 4.5 (cheapest)' },
-    { id:'claude-sonnet-5-5', label:'Sonnet 5.5 (higher quality)' }
+    { id:'gemini-2.5-flash', label:'Gemini 2.5 Flash (default)' },
+    { id:'gemini-2.5-flash-lite', label:'Gemini 2.5 Flash-Lite (cheapest)' },
+    { id:'gemini-2.5-pro', label:'Gemini 2.5 Pro (best quality)' }
   ];
   const NATIVE_LANGS = ['Spanish','English','Portuguese','French','Italian','German'];
-  const defaults = { apiKey:'', model:MODELS[0].id, nativeLang:'Spanish', usage:{ calls:0, input:0, output:0 } };
-  let cfg = Object.assign({}, defaults, Storage.get('ai', {}));
+  const defaults = { provider:'gemini', apiKey:'', model:MODELS[0].id, nativeLang:'Spanish', usage:{ calls:0, input:0, output:0 } };
+  const stored = Storage.get('ai', {});
+  let cfg = Object.assign({}, defaults, stored);
+  if(stored.provider !== 'gemini'){          // settings left over from the previous (Claude) version: the old key is useless here
+    cfg.apiKey = ''; cfg.model = defaults.model; cfg.usage = Object.assign({}, defaults.usage); cfg.provider = 'gemini';
+    Storage.set('ai', cfg);
+  }
   cfg.usage = Object.assign({}, defaults.usage, cfg.usage);
-  const pending = {};   // conceptId -> true while a request is in flight
+  const pending = {};
 
   function save(){ Storage.set('ai', cfg); }
   function hasKey(){ return !!(cfg.apiKey && cfg.apiKey.trim()); }
+  const SYSTEM = 'You are a concise, practical language teacher. Respond with ONLY a valid JSON object: no markdown fences, no preamble.';
 
-  function buildPrompt(c){
+  /* ---- one generic call; returns the raw text of the answer ---- */
+  async function callGemini(userText, maxOut){
+    if(!hasKey()) throw new Error('Falta la API key de Gemini. Añádela en Settings.');
+    const model = (cfg.model || defaults.model).trim();
+    const gen = { maxOutputTokens:maxOut, temperature:0.4, responseMimeType:'application/json' };
+    // 2.5 Flash "thinks" by default and thinking tokens are billed: switch it off for these short tasks.
+    if(/gemini-2\.5-flash(?!-lite)/.test(model)) gen.thinkingConfig = { thinkingBudget:0 };
+    let res;
+    try{
+      res = await fetch(ENDPOINT + encodeURIComponent(model) + ':generateContent', {
+        method:'POST',
+        headers:{ 'content-type':'application/json', 'x-goog-api-key':cfg.apiKey.trim() },
+        body: JSON.stringify({
+          systemInstruction:{ parts:[{ text:SYSTEM }] },
+          contents:[{ role:'user', parts:[{ text:userText }] }],
+          generationConfig:gen
+        })
+      });
+    }catch(netErr){ throw new Error('Sin conexión o petición bloqueada.'); }
+    if(!res.ok){
+      let detail = '';
+      try{ const j = await res.json(); detail = j && j.error && j.error.message ? j.error.message : ''; }catch(e){}
+      if((res.status===400 && /api key/i.test(detail)) || res.status===401 || res.status===403) throw new Error('API key inválida o sin permisos.');
+      if(res.status===404) throw new Error('Modelo no encontrado: '+model+'. Revísalo en Settings.');
+      if(res.status===429) throw new Error('Límite de uso alcanzado, inténtalo en un momento.');
+      throw new Error('Error '+res.status+(detail?': '+detail:''));
+    }
+    const data = await res.json();
+    const um = data.usageMetadata;
+    if(um){
+      cfg.usage.calls += 1;
+      cfg.usage.input += um.promptTokenCount || 0;
+      cfg.usage.output += (um.candidatesTokenCount || 0) + (um.thoughtsTokenCount || 0);
+      save();
+    }
+    if(data.promptFeedback && data.promptFeedback.blockReason) throw new Error('Bloqueado por el filtro de Gemini ('+data.promptFeedback.blockReason+').');
+    const cand = data.candidates && data.candidates[0];
+    if(!cand) throw new Error('Respuesta vacía.');
+    if(cand.finishReason==='MAX_TOKENS') throw new Error('La respuesta se cortó; inténtalo de nuevo.');
+    const text = ((cand.content && cand.content.parts) || []).filter(p=>p.text && !p.thought).map(p=>p.text).join('');
+    if(!text.trim()) throw new Error('Respuesta vacía'+(cand.finishReason?' ('+cand.finishReason+')':'')+'.');
+    return text;
+  }
+
+  function parseJson(text){
+    const a = text.indexOf('{'), b = text.lastIndexOf('}');
+    if(a<0 || b<=a) throw new Error('La respuesta no contiene JSON.');
+    try{ return JSON.parse(text.slice(a, b+1)); }
+    catch(e){ throw new Error('La respuesta no es un JSON válido.'); }
+  }
+  const str = v => (typeof v==='string' ? v.trim() : '');
+
+  /* ---------- concept explanation ---------- */
+  function conceptPrompt(c){
     const ex = (c.examples||[]).slice(0,2).map(e=>'- '+e.text).join('\n');
     return `Target language: ${languageLabel(c.language)} (${c.language})
 Learner's native language: ${cfg.nativeLang}. Write ALL explanation text in ${cfg.nativeLang}; keep target-language expressions and examples in the target language.
@@ -751,12 +832,8 @@ Return ONLY a JSON object with exactly these keys:
  "pitfalls": ["2-3 typical mistakes for a ${cfg.nativeLang} speaker, each as: wrong form -> why it is wrong"],
  "contrast": "how it differs from the closest ${cfg.nativeLang} equivalent or from a similar expression (1-2 sentences)"}`;
   }
-
-  function parse(text){
-    const a = text.indexOf('{'), b = text.lastIndexOf('}');
-    if(a<0 || b<=a) throw new Error('La respuesta no contiene JSON.');
-    const o = JSON.parse(text.slice(a, b+1));
-    const str = v => (typeof v==='string' ? v.trim() : '');
+  function parseExplanation(text){
+    const o = parseJson(text);
     const out = {
       usage:str(o.usage), register:str(o.register), grammar:str(o.grammar), contrast:str(o.contrast),
       pitfalls: Array.isArray(o.pitfalls) ? o.pitfalls.map(str).filter(Boolean) : []
@@ -764,51 +841,13 @@ Return ONLY a JSON object with exactly these keys:
     if(!out.usage && !out.grammar) throw new Error('La respuesta no tiene el formato esperado.');
     return out;
   }
-
   async function explain(conceptId){
     const c = Data.getConcept(conceptId);
     if(!c) throw new Error('Concepto no encontrado.');
-    if(!hasKey()) throw new Error('Falta la API key. Añádela en Settings.');
     if(pending[conceptId]) throw new Error('Ya se está generando.');
     pending[conceptId] = true;
     try{
-      let res;
-      try{
-        res = await fetch('https://api.anthropic.com/v1/messages', {
-          method:'POST',
-          headers:{
-            'content-type':'application/json',
-            'x-api-key': cfg.apiKey.trim(),
-            'anthropic-version':'2023-06-01',
-            'anthropic-dangerous-direct-browser-access':'true'
-          },
-          body: JSON.stringify({
-            model: cfg.model,
-            max_tokens: 900,
-            system: 'You are a concise, practical language teacher. Respond with ONLY a valid JSON object: no markdown fences, no preamble.',
-            messages:[{ role:'user', content: buildPrompt(c) }]
-          })
-        });
-      }catch(netErr){
-        throw new Error('Sin conexión o petición bloqueada.');
-      }
-      if(!res.ok){
-        let detail = '';
-        try{ const j = await res.json(); detail = j && j.error && j.error.message ? j.error.message : ''; }catch(e){}
-        if(res.status===401) throw new Error('API key inválida.');
-        if(res.status===429) throw new Error('Límite de uso alcanzado, inténtalo en un momento.');
-        throw new Error('Error '+res.status+(detail?': '+detail:''));
-      }
-      const data = await res.json();
-      if(data.usage){
-        cfg.usage.calls += 1;
-        cfg.usage.input += data.usage.input_tokens || 0;
-        cfg.usage.output += data.usage.output_tokens || 0;
-        save();
-      }
-      if(data.stop_reason==='max_tokens') throw new Error('La respuesta se cortó; inténtalo de nuevo.');
-      const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
-      const exp = parse(text);
+      const exp = parseExplanation(await callGemini(conceptPrompt(c), 4096));
       exp.model = cfg.model; exp.lang = cfg.nativeLang; exp.createdAt = Date.now();
       c.explanation = exp;
       Data.saveConcepts();
@@ -816,8 +855,43 @@ Return ONLY a JSON object with exactly these keys:
     } finally { delete pending[conceptId]; }
   }
 
+  /* ---------- lesson description (from objectives) ---------- */
+  function lessonPrompt(l){
+    const concepts = l.conceptIds.map(id=>Data.getConcept(id)).filter(Boolean).slice(0,30)
+      .map(c=>'- '+c.expression+' — '+c.meaning).join('\n');
+    const objectives = (l.objectives||[]).length
+      ? l.objectives.map(o=>'- '+o).join('\n')
+      : '(none provided: infer the goals from the concepts)';
+    return `Target language: ${languageLabel(l.language)} (${l.language})
+Learner's native language: ${cfg.nativeLang}. Write the description in ${cfg.nativeLang}; keep target-language expressions in the target language.
+Level: ${l.level || 'not specified'}
+Lesson title: ${l.title}
+Learning objectives:
+${objectives}
+Concepts in this lesson:
+${concepts}
+
+Write the lesson description (80-140 words, 1-2 short paragraphs, plain text, no markdown, no bullet lists). Base it on the objectives: explain the real-life context where these expressions are used, which grammar or usage points the lesson works on, and what the learner will be able to do afterwards. Do not simply list the concepts.
+Return ONLY a JSON object: {"description": "..."}`;
+  }
+  async function describeLesson(lessonId){
+    const l = Data.getLesson(lessonId);
+    if(!l) throw new Error('Lección no encontrada.');
+    const key = 'lesson:'+lessonId;
+    if(pending[key]) throw new Error('Ya se está generando.');
+    pending[key] = true;
+    try{
+      const o = parseJson(await callGemini(lessonPrompt(l), 2048));
+      const d = str(o.description);
+      if(!d) throw new Error('La respuesta no tiene el formato esperado.');
+      l.description = d; l.descriptionSource = 'ai';
+      Data.saveLessons();
+      return d;
+    } finally { delete pending[key]; }
+  }
+
   return {
-    MODELS, NATIVE_LANGS, explain, hasKey,
+    MODELS, NATIVE_LANGS, explain, describeLesson, hasKey,
     config: ()=>cfg, save,
     isPending: id=>!!pending[id],
     resetUsage(){ cfg.usage = { calls:0, input:0, output:0 }; save(); }
@@ -1554,7 +1628,7 @@ function lessonCardHtml(l){
   return `<div class="card">
     <span class="eyebrow">${l.level||''} · ${languageLabel(l.language)}</span>
     <h3>${Utils.escapeHtml(l.title)}</h3>
-    <p class="muted">${Utils.escapeHtml(l.description||'')}</p>
+    <p class="muted clamp-3">${Utils.escapeHtml(l.description||'')}</p>
     <div class="mastery-track"><div class="mastery-fill" style="width:${pct}%"></div></div>
     <p class="faint">${pct}% complete · ${total} concepts</p>
     <div class="btn-row">
@@ -1594,6 +1668,14 @@ function viewLessons(){
   `;
 }
 
+function lessonDescHtml(l){
+  const obj = l.objectives || [];
+  return `${l.description ? `<p class="muted pre-line">${Utils.escapeHtml(l.description)}</p>` : ''}
+    ${obj.length ? `<h3 style="margin-top:14px;">Objetivos</h3><ul class="objectives">${obj.map(o=>`<li>${Utils.escapeHtml(o)}</li>`).join('')}</ul>` : ''}
+    <div class="btn-row" style="margin:10px 0 14px;"><button class="btn secondary" data-action="ai-describe-lesson" data-id="${l.id}">${l.description ? '↻ Regenerar descripción con IA' : '✨ Generar descripción con IA'}</button></div>
+    ${!obj.length && !l.description ? '<p class="faint">Esta lección no tiene objetivos: la descripción se inferirá de sus conceptos.</p>' : ''}`;
+}
+
 function viewLessonDetail(id){
   const l = Data.getLesson(id);
   if(!l) return `<div class="empty-state">Lesson not found.</div>`;
@@ -1603,7 +1685,7 @@ function viewLessonDetail(id){
     <div class="card" style="margin-top:10px;">
       <span class="eyebrow">${l.level||''} · ${l.language}</span>
       <h1>${Utils.escapeHtml(l.title)}</h1>
-      <p class="muted">${Utils.escapeHtml(l.description||'')}</p>
+      <div id="lessonDescHost">${lessonDescHtml(l)}</div>
       <button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Review this lesson</button>
     </div>
     <div style="margin-top:14px;">${concepts.map(conceptCardHtml).join('')}</div>
@@ -1622,7 +1704,9 @@ function importModalHtml(){
       <details style="margin-top:14px;"><summary class="faint" style="cursor:pointer;">Expected format</summary>
       <pre style="background:var(--paper-alt);padding:10px;border-radius:8px;font-size:.72rem;overflow:auto;">{
   "formatVersion": "1.0",
-  "lesson": { "id": "lesson_x", "title": "...", "language": "en-US", "level": "B2" },
+  "lesson": { "id": "lesson_x", "title": "...", "language": "en-US", "level": "B2",
+    "objectives": ["optional: what the learner will be able to do"],
+    "description": "optional: or generate it with AI from the objectives" },
   "concepts": [
     { "id": "concept_x", "type": "phrasal_verb", "expression": "...", "meaning": "...",
       "etymology": "optional — where the expression comes from",
@@ -1733,14 +1817,16 @@ function viewSettings(){
       <input type="number" id="setNewPerDay" min="0" max="30" value="${Data.meta().newPerDay}">
     </div>
     <div class="card" style="margin-top:14px;">
-      <h2>AI explanations</h2>
-      <p class="faint">On demand only: one call per concept, saved inside the concept afterwards. The API key stays in this browser and is never included in backups or exports.</p>
-      <label>Anthropic API key</label>
-      <input type="password" id="aiKey" placeholder="sk-ant-…" autocomplete="off" value="${Utils.escapeHtml(AI.config().apiKey)}">
+      <h2>AI (Gemini)</h2>
+      <p class="faint">On demand only: one call per concept explanation or lesson description, saved afterwards so it works offline. Get a key in Google AI Studio. The key stays in this browser and is never included in backups or exports.</p>
+      <label>Gemini API key</label>
+      <input type="password" id="aiKey" placeholder="AIza…" autocomplete="off" value="${Utils.escapeHtml(AI.config().apiKey)}">
       <label>Explanation language</label>
       <select id="aiLang">${AI.NATIVE_LANGS.map(l=>`<option value="${l}" ${AI.config().nativeLang===l?'selected':''}>${l}</option>`).join('')}</select>
       <label>Model</label>
-      <select id="aiModel">${AI.MODELS.map(m=>`<option value="${m.id}" ${AI.config().model===m.id?'selected':''}>${m.label}</option>`).join('')}</select>
+      <input type="text" id="aiModel" list="aiModels" autocomplete="off" value="${Utils.escapeHtml(AI.config().model)}">
+      <datalist id="aiModels">${AI.MODELS.map(m=>`<option value="${m.id}">${m.label}</option>`).join('')}</datalist>
+      <p class="faint">Pick one or type any Gemini model id.</p>
       <p class="faint" style="margin-top:12px;" id="aiUsage">Used so far: ${AI.config().usage.calls} calls · ${AI.config().usage.input} input tokens · ${AI.config().usage.output} output tokens</p>
       <div class="btn-row"><button class="btn ghost" data-action="ai-reset-usage">Reset counter</button></div>
     </div>
@@ -2185,7 +2271,7 @@ document.addEventListener('click', e=>{
     const id = el.dataset.id, expanded = !!el.dataset.expanded;
     const c = Data.getConcept(id);
     if(!c || AI.isPending(id)) return;
-    if(!AI.hasKey()){ Utils.toast('Añade tu API key en Settings.'); return; }
+    if(!AI.hasKey()){ Utils.toast('Añade tu API key de Gemini en Settings.'); return; }
     const host = ()=>document.getElementById('aiHost_'+id);   // may be gone if the user moved on
     el.disabled = true; el.textContent = 'Generando…';
     AI.explain(id).then(()=>{
@@ -2196,6 +2282,21 @@ document.addEventListener('click', e=>{
       if(h){
         h.innerHTML = aiExplainInner(c, expanded) + `<div class="ai-error">${Utils.escapeHtml(err.message)}</div>`;
       } else Utils.toast(err.message);
+    });
+  }
+  else if(action==='ai-describe-lesson'){
+    const id = el.dataset.id, l = Data.getLesson(id);
+    if(!l || AI.isPending('lesson:'+id)) return;
+    if(!AI.hasKey()){ Utils.toast('Añade tu API key de Gemini en Settings.'); return; }
+    if(l.description && l.descriptionSource!=='ai' && !confirm('Esto reemplazará la descripción actual de la lección. ¿Continuar?')) return;
+    const host = ()=>document.getElementById('lessonDescHost');
+    el.disabled = true; el.textContent = 'Generando…';
+    AI.describeLesson(id).then(()=>{
+      const h = host(); if(h) h.innerHTML = lessonDescHtml(l);
+    }).catch(err=>{
+      const h = host();
+      if(h) h.innerHTML = lessonDescHtml(l) + `<div class="ai-error">${Utils.escapeHtml(err.message)}</div>`;
+      else Utils.toast(err.message);
     });
   }
   else if(action==='install-app'){
