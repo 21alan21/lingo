@@ -226,7 +226,9 @@ hr.rule{border:none;border-top:1px solid var(--line);margin:18px 0;}
 
 /* lessons */
 .clamp-3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-.pre-line{white-space:pre-line;}
+.lesson-desc p{margin:4px 0;}
+.desc-h{margin:16px 0 2px;font-size:.72rem;font-family:var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--indigo);}
+.lesson-desc .desc-h:first-child{margin-top:0;}
 ul.objectives{margin:4px 0 10px;padding-left:20px;font-size:.92rem;}
 ul.objectives li{margin:2px 0;}
 /* AI explanations */
@@ -690,6 +692,8 @@ const JSONImporter = {
         errors.push('lesson.objectives debe ser un array de textos no vacíos.');
       if(obj.lesson.description!==undefined && typeof obj.lesson.description!=='string')
         errors.push('lesson.description debe ser un texto.');
+      if(obj.lesson.explanation!==undefined && typeof obj.lesson.explanation!=='string')
+        errors.push('lesson.explanation debe ser un texto.');
     }
     if(!Array.isArray(obj.concepts) || obj.concepts.length===0) errors.push('"concepts" debe ser un array con al menos un elemento.');
     else{
@@ -723,12 +727,14 @@ const JSONImporter = {
       { conceptIds: obj.concepts.map(c=>c.id) });
     lesson.objectives = lesson.objectives.map(o=>o.trim());
     const prevLesson = Data.getLesson(lesson.id);
-    const hasNewDesc = typeof obj.lesson.description==='string' && obj.lesson.description.trim();
-    if(hasNewDesc){ lesson.description = obj.lesson.description.trim(); }
-    else if(prevLesson && prevLesson.description){          // keep a description generated earlier
-      lesson.description = prevLesson.description;
-      if(prevLesson.descriptionSource) lesson.descriptionSource = prevLesson.descriptionSource;
-    }
+    const given = k => typeof obj.lesson[k]==='string' && obj.lesson[k].trim();
+    ['description','explanation'].forEach(k=>{
+      if(given(k)) lesson[k] = obj.lesson[k].trim();
+      else if(prevLesson && prevLesson[k]){            // the file doesn't carry it: keep what the lesson already had
+        lesson[k] = prevLesson[k];
+        if(k==='explanation'){ if(prevLesson.explanationSource) lesson.explanationSource = prevLesson.explanationSource; }
+      }
+    });
     Data.upsertLesson(lesson);
     return { ok:true, lesson };
   }
@@ -898,15 +904,16 @@ Return ONLY a JSON object with exactly these keys:
     } finally { delete pending[conceptId]; }
   }
 
-  /* ---------- lesson description (from objectives) ---------- */
+  /* ---------- lesson explanation (from objectives) ---------- */
   function lessonPrompt(l){
     const concepts = l.conceptIds.map(id=>Data.getConcept(id)).filter(Boolean).slice(0,30)
       .map(c=>'- '+c.expression+' — '+c.meaning).join('\n');
     const objectives = (l.objectives||[]).length
       ? l.objectives.map(o=>'- '+o).join('\n')
       : '(none provided: infer the goals from the concepts)';
+    const N = cfg.nativeLang;
     return `Target language: ${languageLabel(l.language)} (${l.language})
-Learner's native language: ${cfg.nativeLang}. Write the description in ${cfg.nativeLang}; keep target-language expressions in the target language.
+Explanation language: ${N}. Write everything in ${N}, except target-language expressions and example sentences, which stay in the target language.
 Level: ${l.level || 'not specified'}
 Lesson title: ${l.title}
 Learning objectives:
@@ -914,31 +921,73 @@ ${objectives}
 Concepts in this lesson:
 ${concepts}
 
-Write the lesson description (80-140 words, 1-2 short paragraphs, plain text, no markdown, no bullet lists). Base it on the objectives: explain the real-life context where these expressions are used, which grammar or usage points the lesson works on, and what the learner will be able to do afterwards. Do not simply list the concepts.
-Return ONLY a JSON object: {"description": "..."}`;
+TASK: write the EXPLANATION of this lesson's topic, as a mini-lesson. The learner must be able to UNDERSTAND the topic from this text alone, so TEACH it. Announcing or summarising the topic ("this lesson covers…") is not an explanation.
+First identify the main topic from the objectives.
+
+If the topic is GRAMMATICAL (a tense, structure, rule, contrast, construction), use these sections, in this order, each starting with a heading line "## " followed by a short heading in ${N}:
+1. What it is: what it expresses and what problem it solves for the speaker.
+2. How it is formed: the exact structure(s) as formulas (e.g. "if + past perfect, would + base verb"), each with one example in the target language.
+3. When to use it: the situations, plus how it differs from the closest similar structures the learner may confuse it with.
+4. Compared with ${N}: how it maps to, or differs from, the equivalent in ${N}.
+5. Typical mistakes: 2-3 mistakes that ${N} speakers make, as "wrong → right" with a short reason.
+If the topic is NOT grammatical (vocabulary, a theme, a situation), use these sections instead: "## " Context, How it is used, Typical mistakes.
+
+RULES: 200-350 words in total. Use examples from the listed concepts whenever they fit. Plain text only: the only allowed markup is the "## " heading lines and "- " bullet lines. No bold, no asterisks, no other markdown. Separate sections with a blank line.
+Return ONLY a JSON object: {"explanation": "..."} (use \\n inside the string for line breaks).`;
   }
-  async function describeLesson(lessonId){
+
+  const wordCount = t => t.split(/\s+/).filter(Boolean).length;
+  const headingCount = t => (t.match(/^## /gm) || []).length;
+  function checkExplanation(d){
+    const issues = [];
+    if(wordCount(d) < 160) issues.push('It is too short ('+wordCount(d)+' words): it must be 200-350 words and actually teach the topic.');
+    if(headingCount(d) < 3) issues.push('It must use at least 3 sections, each starting with a "## " heading line.');
+    return issues;
+  }
+  async function generateExplanation(prompt){
+    const o = parseJson(await callGemini(prompt, 4096));
+    // plain text only: drop any markdown the model adds despite the instructions
+    return str(o.explanation).replace(/\*\*/g,'').replace(/`/g,'').replace(/\r/g,'');
+  }
+
+  async function explainLesson(lessonId){
     const l = Data.getLesson(lessonId);
     if(!l) throw new Error('Lección no encontrada.');
     const key = 'lesson:'+lessonId;
     if(pending[key]) throw new Error('Ya se está generando.');
     pending[key] = true;
     try{
-      const o = parseJson(await callGemini(lessonPrompt(l), 2048));
-      const d = str(o.description);
-      if(!d) throw new Error('La respuesta no tiene el formato esperado.');
-      l.description = d; l.descriptionSource = 'ai';
+      const prompt = lessonPrompt(l);
+      let d = await generateExplanation(prompt);
+      const issues = checkExplanation(d);
+      if(issues.length){             // too thin to teach anything: ask once more, with the reasons
+        d = await generateExplanation(prompt + '\n\nYour previous answer was rejected. ' + issues.join(' ') + ' Rewrite it completely, fixing this.\nPrevious answer:\n' + d);
+      }
+      if(!d || wordCount(d) < 100) throw new Error('La explicación generada es demasiado superficial. Inténtalo de nuevo o prueba con un modelo más potente.');
+      l.explanation = d; l.explanationSource = 'ai';
       Data.saveLessons();
       return d;
     } finally { delete pending[key]; }
   }
 
   return {
-    MODELS, NATIVE_LANGS, explain, describeLesson, hasKey, listModels, pickDefault,
+    MODELS, NATIVE_LANGS, explain, explainLesson, hasKey, listModels, pickDefault,
     config: ()=>cfg, save,
     isPending: id=>!!pending[id],
     resetUsage(){ cfg.usage = { calls:0, input:0, output:0 }; save(); }
   };
+})();
+
+/* One-time migration: AI text used to be stored in lesson.description; it now lives in lesson.explanation. */
+(function(){
+  let changed = false;
+  Data.allLessons().forEach(l=>{
+    if(l.descriptionSource==='ai'){
+      l.explanation = l.description; l.explanationSource = 'ai';
+      delete l.description; delete l.descriptionSource; changed = true;
+    }
+  });
+  if(changed) Data.saveLessons();
 })();
 
 /* =========================================================
@@ -1671,7 +1720,7 @@ function lessonCardHtml(l){
   return `<div class="card">
     <span class="eyebrow">${l.level||''} · ${languageLabel(l.language)}</span>
     <h3>${Utils.escapeHtml(l.title)}</h3>
-    <p class="muted clamp-3">${Utils.escapeHtml(l.description||'')}</p>
+    <p class="muted clamp-3">${Utils.escapeHtml(l.description || descSummary(l.explanation))}</p>
     <div class="mastery-track"><div class="mastery-fill" style="width:${pct}%"></div></div>
     <p class="faint">${pct}% complete · ${total} concepts</p>
     <div class="btn-row">
@@ -1711,12 +1760,32 @@ function viewLessons(){
   `;
 }
 
-function lessonDescHtml(l){
+/* Description text: "## " lines are headings, "- " lines are bullets, anything else a paragraph. Everything is escaped. */
+function descToHtml(text){
+  let html = '', list = [];
+  const flush = ()=>{ if(list.length){ html += '<ul class="objectives">'+list.map(x=>`<li>${Utils.escapeHtml(x)}</li>`).join('')+'</ul>'; list = []; } };
+  String(text||'').split('\n').forEach(raw=>{
+    const ln = raw.trim();
+    if(!ln){ flush(); return; }
+    if(ln.indexOf('## ')===0){ flush(); html += `<h4 class="desc-h">${Utils.escapeHtml(ln.slice(3))}</h4>`; }
+    else if(/^[-•]\s+/.test(ln)) list.push(ln.replace(/^[-•]\s+/,''));
+    else { flush(); html += `<p class="muted">${Utils.escapeHtml(ln)}</p>`; }
+  });
+  flush();
+  return html;
+}
+function descSummary(text){      // first real paragraph, for the lesson cards
+  const line = String(text||'').split('\n').map(x=>x.trim()).find(x=>x && x.indexOf('## ')!==0 && !/^[-•]\s/.test(x));
+  return line || '';
+}
+
+function lessonExplainHtml(l){
   const obj = l.objectives || [];
-  return `${l.description ? `<p class="muted pre-line">${Utils.escapeHtml(l.description)}</p>` : ''}
+  return `${l.description ? `<p class="muted">${Utils.escapeHtml(l.description)}</p>` : ''}
     ${obj.length ? `<h3 style="margin-top:14px;">Objetivos</h3><ul class="objectives">${obj.map(o=>`<li>${Utils.escapeHtml(o)}</li>`).join('')}</ul>` : ''}
-    <div class="btn-row" style="margin:10px 0 14px;"><button class="btn secondary" data-action="ai-describe-lesson" data-id="${l.id}">${l.description ? '↻ Regenerar descripción con IA' : '✨ Generar descripción con IA'}</button></div>
-    ${!obj.length && !l.description ? '<p class="faint">Esta lección no tiene objetivos: la descripción se inferirá de sus conceptos.</p>' : ''}`;
+    ${l.explanation ? `<h3 style="margin-top:18px;">Explicación</h3><div class="lesson-desc">${descToHtml(l.explanation)}</div>` : ''}
+    <div class="btn-row" style="margin:10px 0 14px;"><button class="btn secondary" data-action="ai-explain-lesson" data-id="${l.id}">${l.explanation ? '↻ Regenerar explicación con IA' : '✨ Generar explicación con IA'}</button></div>
+    ${!obj.length && !l.explanation ? '<p class="faint">Esta lección no tiene objetivos: la explicación se inferirá de sus conceptos.</p>' : ''}`;
 }
 
 function viewLessonDetail(id){
@@ -1728,7 +1797,7 @@ function viewLessonDetail(id){
     <div class="card" style="margin-top:10px;">
       <span class="eyebrow">${l.level||''} · ${l.language}</span>
       <h1>${Utils.escapeHtml(l.title)}</h1>
-      <div id="lessonDescHost">${lessonDescHtml(l)}</div>
+      <div id="lessonExplainHost">${lessonExplainHtml(l)}</div>
       <button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Review this lesson</button>
     </div>
     <div style="margin-top:14px;">${concepts.map(conceptCardHtml).join('')}</div>
@@ -1749,7 +1818,8 @@ function importModalHtml(){
   "formatVersion": "1.0",
   "lesson": { "id": "lesson_x", "title": "...", "language": "en-US", "level": "B2",
     "objectives": ["optional: what the learner will be able to do"],
-    "description": "optional: or generate it with AI from the objectives" },
+    "description": "optional: one-line summary shown on the lesson card",
+    "explanation": "optional: the lesson's teaching text, or generate it with AI from the objectives" },
   "concepts": [
     { "id": "concept_x", "type": "phrasal_verb", "expression": "...", "meaning": "...",
       "etymology": "optional — where the expression comes from",
@@ -1861,7 +1931,7 @@ function viewSettings(){
     </div>
     <div class="card" style="margin-top:14px;">
       <h2>AI (Gemini)</h2>
-      <p class="faint">On demand only: one call per concept explanation or lesson description, saved afterwards so it works offline. Get a key in Google AI Studio. The key stays in this browser and is never included in backups or exports.</p>
+      <p class="faint">On demand only: one call per concept or lesson explanation, saved afterwards so it works offline. Get a key in Google AI Studio. The key stays in this browser and is never included in backups or exports.</p>
       <label>Gemini API key</label>
       <input type="password" id="aiKey" placeholder="AIza…" autocomplete="off" value="${Utils.escapeHtml(AI.config().apiKey)}">
       <label>Explanation language</label>
@@ -2347,18 +2417,18 @@ document.addEventListener('click', e=>{
     }).catch(err=>{ if(st) st.textContent = err.message; })
       .finally(()=>{ el.disabled = false; });
   }
-  else if(action==='ai-describe-lesson'){
+  else if(action==='ai-explain-lesson'){
     const id = el.dataset.id, l = Data.getLesson(id);
     if(!l || AI.isPending('lesson:'+id)) return;
     if(!AI.hasKey()){ Utils.toast('Añade tu API key de Gemini en Settings.'); return; }
-    if(l.description && l.descriptionSource!=='ai' && !confirm('Esto reemplazará la descripción actual de la lección. ¿Continuar?')) return;
-    const host = ()=>document.getElementById('lessonDescHost');
+    if(l.explanation && l.explanationSource!=='ai' && !confirm('Esto reemplazará la explicación actual de la lección. ¿Continuar?')) return;
+    const host = ()=>document.getElementById('lessonExplainHost');
     el.disabled = true; el.textContent = 'Generando…';
-    AI.describeLesson(id).then(()=>{
-      const h = host(); if(h) h.innerHTML = lessonDescHtml(l);
+    AI.explainLesson(id).then(()=>{
+      const h = host(); if(h) h.innerHTML = lessonExplainHtml(l);
     }).catch(err=>{
       const h = host();
-      if(h) h.innerHTML = lessonDescHtml(l) + `<div class="ai-error">${Utils.escapeHtml(err.message)}</div>`;
+      if(h) h.innerHTML = lessonExplainHtml(l) + `<div class="ai-error">${Utils.escapeHtml(err.message)}</div>`;
       else Utils.toast(err.message);
     });
   }

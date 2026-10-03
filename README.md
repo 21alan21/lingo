@@ -47,7 +47,8 @@ Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons 
       "Pedir ayuda en el aeropuerto",
       "Usar check in / check out con naturalidad"
     ],
-    "description": "Opcional. Si no la incluyes, puedes generarla con IA."
+    "description": "Opcional: resumen de una línea para la tarjeta de la lección.",
+    "explanation": "Opcional: texto que explica el tema. Si no lo incluyes, puedes generarlo con IA."
   },
   "concepts": [
     {
@@ -83,8 +84,9 @@ Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons 
 | `title` | sí | Título. |
 | `language` | sí | Código de idioma, por ejemplo `en-US`. |
 | `level` | no | Nivel (B2, C1…). |
-| `objectives` | no | Array de textos no vacíos con lo que el alumno podrá hacer. Se muestran en la lección y sirven de base para generar la descripción con IA. |
-| `description` | no | Texto. Si falta, el botón **✨ Generar descripción con IA** de la lección la crea a partir de los objetivos (y de los conceptos si no hay objetivos). |
+| `objectives` | no | Array de textos no vacíos con lo que el alumno podrá hacer. Se muestran en la lección y sirven de base para generar la explicación con IA. |
+| `description` | no | Resumen corto (una línea) que se muestra en la tarjeta de la lección. |
+| `explanation` | no | Texto que explica el tema de la lección (en gramática: qué es, cómo se forma, cuándo se usa…). Si falta, el botón **✨ Generar explicación con IA** lo crea a partir de los objetivos (y de los conceptos si no hay objetivos). Las líneas que empiezan por `## ` se muestran como títulos y las que empiezan por `- ` como viñetas. |
 | `tags`, `prerequisites` | no | Arrays de textos. |
 
 ### Campos de cada concepto
@@ -98,20 +100,23 @@ Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons 
 ### Qué pasa al reimportar
 
 - Un concepto sin `language` hereda el de la lección.
-- Si el archivo trae `description`, sustituye a la actual. Si no la trae, **se conserva la que ya tenía la lección** (por ejemplo, una generada con IA).
+- Si el archivo trae `description` o `explanation`, sustituye a la actual. Si no los trae, **se conserva el que ya tenía la lección** (por ejemplo, una explicación generada con IA).
 - Los conceptos reimportados conservan su explicación generada con IA si el archivo no incluye una.
 - Los `objectives` siempre se reemplazan por los del archivo.
 
 ### Errores de validación
 
-La importación se rechaza, con un mensaje por problema, si falta `formatVersion`, `lesson`, `lesson.id`, `lesson.title` o `lesson.language`; si `concepts` está vacío; si un concepto no tiene `id`, `expression`, `meaning` o `type`, o repite un `id`; si `examples` no es un array; si `objectives` no es un array de textos no vacíos; o si `description` no es un texto.
+La importación se rechaza, con un mensaje por problema, si falta `formatVersion`, `lesson`, `lesson.id`, `lesson.title` o `lesson.language`; si `concepts` está vacío; si un concepto no tiene `id`, `expression`, `meaning` o `type`, o repite un `id`; si `examples` no es un array; si `objectives` no es un array de textos no vacíos; o si `description` o `explanation` no son un texto.
 
 ## IA (Gemini)
 
 Todo bajo demanda, nunca durante los ejercicios ni al importar. Se configura en **Settings → AI (Gemini)**: API key, idioma de la explicación y modelo (por defecto el alias `gemini-flash-latest`, que no se retira con cada versión; puedes escribir cualquier otro id). El botón **Detect models** consulta a la API qué modelos puede usar tu key; si el modelo guardado deja de existir, la app lo detecta y cambia sola a uno disponible.
 
 - **Explicación de un concepto**: botón **✨ Explicar con IA** en el detalle del concepto y en las tarjetas de presentación y repaso. Genera uso, registro, gramática, errores típicos y contraste con tu idioma. Se guarda en `concept.explanation`.
-- **Descripción de una lección**: botón **✨ Generar descripción con IA** en el detalle de la lección. Se guarda en `lesson.description`. Si la descripción venía de un archivo importado, pide confirmación antes de reemplazarla.
+- **Explicación de una lección**: botón **✨ Generar explicación con IA** en el detalle de la lección. Se guarda en `lesson.explanation` (el resumen corto `description` no se toca). Si la explicación venía de un archivo importado, pide confirmación antes de reemplazarla.
+  - Si el tema de los objetivos es gramatical, la IA debe *enseñarlo*, no resumirlo: qué es, cómo se forma (con fórmulas y ejemplos), cuándo se usa y con qué se confunde, comparación con tu idioma y errores típicos. Son 200-350 palabras en secciones.
+  - Si el resultado es demasiado corto o sin secciones, la app lo rechaza y vuelve a pedirlo una vez, indicando el motivo. Si sigue siendo superficial, muestra un error en lugar de guardarlo.
+  - El formato del texto (`## ` para títulos, `- ` para viñetas) es el mismo si la escribes tú en el JSON.
 
 La petición sale directamente del navegador hacia la API de Gemini, y Settings muestra un contador de llamadas y tokens usados.
 
