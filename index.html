@@ -269,6 +269,18 @@ const Utils = {
   clone(o){ return JSON.parse(JSON.stringify(o)); },
   escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); },
   normalize(s){ return String(s||'').toLowerCase().trim().replace(/[.!?,;:]+$/,'').replace(/\s+/g,' '); },
+  // Used to grade typed answers: ignores case, punctuation, curly vs straight apostrophes and
+  // "n't" vs "not" (wouldn’t = wouldn't = would not), so correct answers are not marked wrong
+  // for typography. Accents are NOT ignored: they matter in other languages.
+  looseNormalize(s){
+    return String(s||'').toLowerCase()
+      .replace(/[\u2018\u2019\u02BC\u0060\u00B4]/g, "'")
+      .replace(/\bcan't\b/g,'cannot').replace(/\bcan not\b/g,'cannot')
+      .replace(/\bwon't\b/g,'will not').replace(/\bshan't\b/g,'shall not')
+      .replace(/n't\b/g,' not')
+      .replace(/[.,;:!?"\u201C\u201D()\[\]\u2026\u00BF\u00A1\u00AB\u00BB\u3001\u3002\uFF01\uFF1F\u2013\u2014-]/g,' ')
+      .replace(/\s+/g,' ').trim();
+  },
   startOfDay(ts){ const d=new Date(ts); d.setHours(0,0,0,0); return d.getTime(); },
   daysFromNow(days){ return Date.now() + days*24*60*60*1000; },
   fmtDate(ts){ if(!ts) return '—'; const d=new Date(ts); return d.toLocaleDateString(undefined,{day:'2-digit',month:'short'}); },
@@ -280,12 +292,12 @@ const Utils = {
     a.href = url; a.download = filename; document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   },
-  toast(msg){
+  toast(msg, ms){
     let t = document.getElementById('toast');
     if(t) t.remove();
     t = document.createElement('div'); t.id='toast'; t.className='toast'; t.textContent=msg;
     document.body.appendChild(t);
-    setTimeout(()=>{ t.remove(); }, 2600);
+    setTimeout(()=>{ t.remove(); }, ms || 2600);
   }
 };
 
@@ -706,6 +718,17 @@ const JSONImporter = {
         if(!c.meaning) errors.push(`concepts[${i}] (${c.id||'?'}): falta "meaning".`);
         if(!c.type) errors.push(`concepts[${i}] (${c.id||'?'}): falta "type".`);
         if(c.examples && !Array.isArray(c.examples)) errors.push(`concepts[${i}] (${c.id||'?'}): "examples" debe ser un array.`);
+        if(Array.isArray(c.examples)) c.examples.forEach((e,j)=>{
+          const at = `concepts[${i}] (${c.id||'?'}) examples[${j}]`;
+          if(!e || typeof e.text!=='string' || !e.text.trim()){ errors.push(`${at}: falta "text".`); return; }
+          if(typeof e.blank!=='string' || !e.blank || e.text.indexOf(e.blank)<0) errors.push(`${at}: "blank" debe ser un fragmento que aparezca exactamente en "text".`);
+          if(!Array.isArray(e.answers) || !e.answers.length || e.answers.some(a=>typeof a!=='string' || !a.trim())) errors.push(`${at}: "answers" debe ser un array de textos no vacíos.`);
+          ['hint','translation'].forEach(k=>{ if(e[k]!==undefined && typeof e[k]!=='string') errors.push(`${at}: "${k}" debe ser un texto.`); });
+          if(e.distractors!==undefined){
+            if(!Array.isArray(e.distractors) || e.distractors.some(d=>typeof d!=='string' || !d.trim())) errors.push(`${at}: "distractors" debe ser un array de textos no vacíos.`);
+            else if(Array.isArray(e.answers) && e.distractors.some(d=>e.answers.some(a=>typeof a==='string' && Utils.looseNormalize(a)===Utils.looseNormalize(d)))) errors.push(`${at}: un "distractor" coincide con una respuesta correcta.`);
+          }
+        });
       });
     }
     return errors;
@@ -736,7 +759,12 @@ const JSONImporter = {
       }
     });
     Data.upsertLesson(lesson);
-    return { ok:true, lesson };
+    const warnings = [];
+    const fewEx = obj.concepts.filter(c=>(c.examples||[]).length<3).length;
+    const noMis = obj.concepts.filter(c=>!(c.commonMistakes||[]).some(m=>m && m.wrong && m.correct)).length;
+    if(fewEx) warnings.push(fewEx+' concept(s) have fewer than 3 examples: sentences will repeat in exercises.');
+    if(noMis) warnings.push(noMis+' concept(s) have no commonMistakes: no error-correction or "which sentence is correct" exercises for them.');
+    return { ok:true, lesson, warnings };
   }
 };
 
@@ -1079,7 +1107,8 @@ const Recorder = (function(){
    ========================================================= */
 const SRS = {
   MODALITY_BY_EXTYPE: { fill_blank:'reading', multiple_choice:'reading', listening:'listening',
-    dictation:'listening', error_correction:'production', word_order:'production', production:'production' },
+    dictation:'listening', error_correction:'production', word_order:'production', production:'production',
+    choose_correct:'reading', meaning_choice:'reading', expression_choice:'reading' },
 
   computeMastery(s){
     const mods = ['reading','listening','production'];
@@ -1137,14 +1166,29 @@ const SRS = {
     if(s.nextReview<endWeek) return 'thisWeek';
     return 'later';
   },
+  // Lesson study works in small batches so a big lesson never turns into one endless session.
+  LESSON_BATCH: 5,
+  lessonBatch(lessonId){
+    const lesson = Data.getLesson(lessonId);
+    const concepts = (lesson ? lesson.conceptIds : []).map(id=>Data.getConcept(id)).filter(Boolean);
+    const isNew = c => Data.getSrs(c.id).repetitions===0;
+    const fresh = concepts.filter(isNew);                         // not studied yet, in lesson order
+    const studied = concepts.filter(c=>!isNew(c)).sort((a,b)=>{   // most overdue / weakest first
+      const sa = Data.getSrs(a.id), sb = Data.getSrs(b.id);
+      return (sa.nextReview-sb.nextReview) || (sa.mastery-sb.mastery);
+    });
+    const size = SRS.LESSON_BATCH;
+    const news = fresh.slice(0, size);
+    const topUp = studied.slice(0, size-news.length);              // fewer than 5 new left: complete the batch with reviews
+    return { batch: news.concat(topUp), newInBatch: news.length, newLeft: fresh.length, total: concepts.length, studied: studied.length };
+  },
   buildQueue(mode, opts){
     opts = opts||{};
     const now = Date.now();
     const all = Data.allConcepts();
     let pool = [];
     if(mode==='lesson' && opts.lessonId){
-      const lesson = Data.getLesson(opts.lessonId);
-      pool = (lesson? lesson.conceptIds : []).map(id=>Data.getConcept(id)).filter(Boolean);
+      pool = SRS.lessonBatch(opts.lessonId).batch;
     } else if(mode==='weak'){
       pool = all.filter(c=>{ const s=Data.getSrs(c.id); return s.repetitions>0 && s.mastery<55; })
         .sort((a,b)=>Data.getSrs(a.id).mastery-Data.getSrs(b.id).mastery);
@@ -1179,15 +1223,15 @@ const Exercise = {
   // Difficulty tiers: a concept only "unlocks" harder exercise types as it accumulates
   // successful repetitions. Tier 1 (brand new) is recognition-only — no typing, no production.
   DIFFICULTY_TIERS: {
-    1: ['multiple_choice','fill_blank'],                                            // first exposure: pure recognition
-    2: ['multiple_choice','fill_blank','listening'],                                // add listening recognition
-    3: ['multiple_choice','fill_blank','listening','word_order','error_correction'],// add constrained production
-    4: ['multiple_choice','fill_blank','listening','word_order','error_correction','dictation','production'] // free production
+    1: ['multiple_choice','fill_blank','meaning_choice'],                                            // first exposure: pure recognition
+    2: ['multiple_choice','fill_blank','listening','choose_correct','meaning_choice','expression_choice'],                // add listening + spotting the correct sentence
+    3: ['multiple_choice','fill_blank','listening','choose_correct','meaning_choice','expression_choice','word_order','error_correction'],// add constrained production
+    4: ['multiple_choice','fill_blank','listening','choose_correct','meaning_choice','expression_choice','word_order','error_correction','dictation','production'] // free production
   },
   // The tier at which each exercise type first becomes available — used to prefer the
   // *freshest* (hardest currently-unlocked) type rather than any cumulative one, so
   // difficulty strictly climbs instead of occasionally dipping back to something easier.
-  TYPE_MIN_TIER: { multiple_choice:1, fill_blank:1, listening:2, word_order:3, error_correction:3, dictation:4, production:4 },
+  TYPE_MIN_TIER: { multiple_choice:1, fill_blank:1, listening:2, choose_correct:2, meaning_choice:1, expression_choice:2, word_order:3, error_correction:3, dictation:4, production:4 },
   tierFor(repetitions){
     const r = repetitions || 0;
     if(r<=0) return 1;
@@ -1205,7 +1249,13 @@ const Exercise = {
       if(allowed.includes('listening')) types.push('listening');
       if(allowed.includes('dictation')) types.push('dictation');
     }
-    if(allowed.includes('error_correction') && concept.commonMistakes && concept.commonMistakes.length) types.push('error_correction');
+    const hasMistake = (concept.commonMistakes||[]).some(Exercise.usableMistake);
+    if(allowed.includes('error_correction') && hasMistake) types.push('error_correction');
+    if(allowed.includes('choose_correct') && hasMistake) types.push('choose_correct');
+    if(concept.meaning){
+      if(allowed.includes('meaning_choice')) types.push('meaning_choice');
+      if(allowed.includes('expression_choice')) types.push('expression_choice');
+    }
     if(allowed.includes('word_order') && concept.examples && concept.examples.some(e=>e.text.split(' ').length>=4)) types.push('word_order');
     if(allowed.includes('production')) types.push('production');
     // Safety net: a concept with no usable examples/mistakes at low tiers still needs something
@@ -1214,7 +1264,19 @@ const Exercise = {
   },
   // repsOverride lets a session escalate difficulty across repeated attempts of the same
   // concept within one sitting, independent of the concept's persisted SRS repetitions.
-  pickType(concept, srs, repsOverride){
+  // How likely each exercise type is for each kind of concept. These weights only choose among the
+  // types available at the current difficulty tier (tier 1: multiple/fill/meaning, 2: listening/
+  // correct-sentence/expression, 3: word order/error correction, 4: dictation/free production).
+  TYPE_WEIGHTS: {
+    vocabulary:       { meaning_choice:3, expression_choice:3, fill_blank:2, multiple_choice:2, listening:2, choose_correct:1, word_order:1, error_correction:1, dictation:2, production:2 },
+    phrasal_verb:     { meaning_choice:2, expression_choice:3, fill_blank:3, multiple_choice:3, listening:1, choose_correct:2, word_order:2, error_correction:3, dictation:2, production:2 },
+    idiom:            { meaning_choice:4, expression_choice:3, fill_blank:1, multiple_choice:2, listening:2, choose_correct:1, word_order:2, error_correction:1, dictation:2, production:2 },
+    collocation:      { meaning_choice:1, expression_choice:1, fill_blank:3, multiple_choice:3, listening:1, choose_correct:3, word_order:1, error_correction:3, dictation:1, production:2 },
+    expression:       { meaning_choice:2, expression_choice:2, fill_blank:2, multiple_choice:2, listening:3, choose_correct:1, word_order:2, error_correction:1, dictation:3, production:4 },
+    grammar_pattern:  { meaning_choice:1, expression_choice:1, fill_blank:3, multiple_choice:2, listening:1, choose_correct:4, word_order:2, error_correction:4, dictation:1, production:3 },
+    sentence_pattern: { meaning_choice:1, expression_choice:1, fill_blank:3, multiple_choice:2, listening:1, choose_correct:4, word_order:3, error_correction:4, dictation:1, production:3 }
+  },
+  pickType(concept, srs, repsOverride, avoid){
     const reps = repsOverride!=null ? repsOverride : srs.repetitions;
     const tier = Exercise.tierFor(reps);
     const cumulative = Exercise.applicableTypes(concept, reps);
@@ -1225,41 +1287,143 @@ const Exercise = {
       const maxAvailableTier = Math.max(...cumulative.map(t=>Exercise.TYPE_MIN_TIER[t]));
       pool = cumulative.filter(t=>Exercise.TYPE_MIN_TIER[t]===maxAvailableTier);
     }
+    // two consecutive exercises of the same concept shouldn't be the same type, when there's a choice
+    if(avoid && pool.length>1) pool = pool.filter(t=>t!==avoid);
     // bias toward least-practiced modality within that pool
     const modTotals = { reading:srs.modalityStats.reading.total, listening:srs.modalityStats.listening.total, production:srs.modalityStats.production.total };
     const weighted = [];
     pool.forEach(t=>{
       const mod = SRS.MODALITY_BY_EXTYPE[t];
       const weight = 1 / (1+modTotals[mod]);
-      for(let i=0;i<Math.ceil(weight*10);i++) weighted.push(t);
+      const typeW = (Exercise.TYPE_WEIGHTS[concept.type] || {})[t] || 1;
+      for(let i=0;i<Math.ceil(weight*10)*typeW;i++) weighted.push(t);
     });
     return weighted[Math.floor(Math.random()*weighted.length)];
   },
-  distractorPool(concept, allConcepts){
-    return allConcepts.filter(c=>c.id!==concept.id && c.type===concept.type && c.examples && c.examples.length);
+  usableMistake(m){ return !!(m && m.wrong && m.correct && Utils.looseNormalize(m.wrong)!==Utils.looseNormalize(m.correct)); },
+  // Picks an item that has not been used yet in this session; once all were used, starts a new round.
+  pickFresh(arr, used, ok){
+    let idxs = arr.map((_,i)=>i).filter(i=>!ok || ok(arr[i]));
+    if(!idxs.length) idxs = arr.map((_,i)=>i);
+    let fresh = idxs.filter(i=>!used.includes(i));
+    if(!fresh.length){ used.length = 0; fresh = idxs; }
+    const i = fresh[Math.floor(Math.random()*fresh.length)];
+    used.push(i);
+    return arr[i];
   },
-  generate(concept, type, allConcepts){
+  normKey(s){ return Utils.looseNormalize(s); },
+  // `other` would also be a right answer (synonyms, same meaning): never use it as a distractor
+  conflicts(concept, other){
+    const k = Exercise.normKey, syn = x => (x.synonyms||[]).map(k);
+    return syn(concept).includes(k(other.expression)) || syn(other).includes(k(concept.expression)) ||
+           (!!concept.meaning && k(other.meaning)===k(concept.meaning));
+  },
+  // Best distractor candidates first: concepts listed in `related` (the ones really confused with this
+  // one), then the same type, then the rest. Shuffled inside each group.
+  ranked(concept, candidates){
+    const rel = new Set(concept.related||[]);
+    const ok = candidates.filter(c=>c.id!==concept.id && !Exercise.conflicts(concept, c));
+    const g1 = ok.filter(c=>rel.has(c.id)), g2 = ok.filter(c=>!rel.has(c.id) && c.type===concept.type), g3 = ok.filter(c=>!rel.has(c.id) && c.type!==concept.type);
+    return Utils.shuffle(g1).concat(Utils.shuffle(g2), Utils.shuffle(g3));
+  },
+  meaningPool(concept, allConcepts){
+    return allConcepts.filter(c=>c.id!==concept.id && c.language===concept.language && c.meaning);
+  },
+  // Coarse grammatical form of a phrase's first word (English only). Options in a multiple-choice
+  // sentence should share it: "keep ___ my appointment" with one -ing option gives the answer away.
+  formClass(phrase, lang){
+    if(!/^en/i.test(lang||'en')) return 'base';
+    const w = String(phrase||'').trim().split(/\s+/)[0].toLowerCase().replace(/[^a-z']/g,'');
+    if(/ing$/.test(w) && w.length>4) return 'ing';
+    if(/ed$/.test(w) && w.length>3) return 'ed';
+    if(/[^s']s$/.test(w) && w.length>3) return 's';
+    return 'base';
+  },
+  matchCase(text, ref){
+    if(!text || !ref) return text;
+    if(/^[A-Z]/.test(ref)) return text.charAt(0).toUpperCase()+text.slice(1);
+    const first = text.split(' ')[0];
+    if(first==='I' || /^I'/.test(first)) return text;
+    return text.charAt(0).toLowerCase()+text.slice(1);
+  },
+  uniqueTexts(texts, exclude, max){
+    const seen = new Set(exclude.map(Exercise.normKey)), out = [];
+    for(const t of texts){ const k = Exercise.normKey(t); if(t && !seen.has(k)){ seen.add(k); out.push(t); if(out.length>=max) break; } }
+    return out;
+  },
+  // Can this type be built from the concepts available? (needs other concepts for its options)
+  hasOptionsFor(type, concept, all){
+    if(type==='multiple_choice' && (concept.examples||[]).some(e=>(e.distractors||[]).length>=2)) return true;
+    if(type==='multiple_choice' || type==='listening') return Exercise.ranked(concept, Exercise.distractorPool(concept, all)).length>=1;
+    if(type==='meaning_choice' || type==='expression_choice') return Exercise.ranked(concept, Exercise.meaningPool(concept, all)).length>=1;
+    return true;
+  },
+  fallbackType(concept, tier){
+    if(tier>=2 && (concept.commonMistakes||[]).some(Exercise.usableMistake)) return 'choose_correct';
+    return (concept.examples && concept.examples.length) ? 'fill_blank' : 'production';
+  },
+  distractorPool(concept, allConcepts){
+    return allConcepts.filter(c=>c.id!==concept.id && c.type===concept.type && c.language===concept.language && c.examples && c.examples.length);
+  },
+  generate(concept, type, allConcepts, used){
     type = type || 'fill_blank';
-    const ex = concept.examples && concept.examples.length ? concept.examples[Math.floor(Math.random()*concept.examples.length)] : null;
+    used = used || {};
+    const bucket = k => (used[k] = used[k] || []);
+    const examples = concept.examples || [];
+    let ex = null;
+    if(examples.length){
+      if(['fill_blank','multiple_choice','listening','dictation','word_order'].includes(type)){
+        // never repeat a sentence inside one session until all of the concept's examples were used
+        ex = Exercise.pickFresh(examples, bucket('ex:'+concept.id), type==='word_order' ? e=>e.text.split(' ').length>=4 : null);
+      } else ex = examples[Math.floor(Math.random()*examples.length)];
+    }
     const base = { conceptId:concept.id, type, concept };
     if(type==='fill_blank'){
       return Object.assign(base, { prompt:ex.text.replace(ex.blank, '______'), answers:ex.answers, raw:ex });
     }
     if(type==='multiple_choice'){
-      const distractors = Utils.sample(Exercise.distractorPool(concept, allConcepts), 3).map(c=>c.examples[0].blank);
-      const options = Utils.shuffle([ex.answers[0], ...distractors].filter((v,i,a)=>a.indexOf(v)===i)).slice(0,4);
+      const answer = ex.answers[0];
+      const cls = Exercise.formClass(answer, concept.language);
+      const cand = Exercise.ranked(concept, Exercise.distractorPool(concept, allConcepts)).map(c=>{
+        const blanks = (c.examples||[]).map(e=>e.blank).filter(Boolean);
+        const same = blanks.find(b=>Exercise.formClass(b, c.language)===cls);   // same -ing / -ed / base form as the answer
+        return { text:Exercise.matchCase(same || blanks[0], answer), same:!!same };
+      }).filter(x=>x.text);
+      const ordered = cand.filter(x=>x.same).concat(cand.filter(x=>!x.same)).map(x=>x.text);
+      // distractors written by the lesson author are better than guessed ones: use them alone when there are 2+
+      const author = Exercise.uniqueTexts(ex.distractors || [], ex.answers, 3);
+      const distractors = author.length>=2 ? author : author.concat(Exercise.uniqueTexts(ordered, ex.answers.concat(author), 3-author.length));
+      const options = Utils.shuffle([answer, ...distractors]);
       return Object.assign(base, { prompt:ex.text.replace(ex.blank,'______'), options, answers:ex.answers, raw:ex });
     }
     if(type==='listening'){
-      const distractors = Utils.sample(Exercise.distractorPool(concept, allConcepts), 3).map(c=>c.expression);
-      const options = Utils.shuffle([concept.expression, ...distractors].filter((v,i,a)=>a.indexOf(v)===i)).slice(0,4);
+      const ds = Exercise.ranked(concept, Exercise.distractorPool(concept, allConcepts)).map(c=>c.expression);
+      const options = Utils.shuffle([concept.expression, ...Exercise.uniqueTexts(ds, [concept.expression], 3)]);
       return Object.assign(base, { audioText:ex.text, options, answers:[concept.expression], raw:ex });
+    }
+    if(type==='meaning_choice'){
+      const ds = Exercise.ranked(concept, Exercise.meaningPool(concept, allConcepts)).map(c=>c.meaning);
+      const options = Utils.shuffle([concept.meaning, ...Exercise.uniqueTexts(ds, [concept.meaning], 3)]);
+      return Object.assign(base, { prompt:`What does "${concept.expression}" mean?`, options, answers:[concept.meaning] });
+    }
+    if(type==='expression_choice'){
+      const ds = Exercise.ranked(concept, Exercise.meaningPool(concept, allConcepts)).map(c=>c.expression);
+      const options = Utils.shuffle([concept.expression, ...Exercise.uniqueTexts(ds, [concept.expression], 3)]);
+      const syns = (concept.synonyms||[]).filter(Boolean);
+      const cue = syns.length && Math.random()<0.5 ? syns[Math.floor(Math.random()*syns.length)] : null;
+      return Object.assign(base, {
+        prompt: cue ? `Which expression means "${cue}"?` : `Which expression matches this meaning? ${concept.meaning}`,
+        options, answers:[concept.expression] });
     }
     if(type==='dictation'){
       return Object.assign(base, { audioText:ex.text, answers:[ex.text], raw:ex });
     }
-    if(type==='error_correction'){
-      const m = concept.commonMistakes[Math.floor(Math.random()*concept.commonMistakes.length)];
+    if(type==='error_correction' || type==='choose_correct'){
+      const m = Exercise.pickFresh(concept.commonMistakes, bucket('mi:'+concept.id), Exercise.usableMistake);
+      if(type==='choose_correct'){
+        // the author-written wrong sentence is the distractor: plausible, and aimed at the real mistake
+        return Object.assign(base, { prompt:'Which sentence is correct?', options:Utils.shuffle([m.correct, m.wrong]), answers:[m.correct], raw:m });
+      }
       return Object.assign(base, { prompt:m.wrong, answers:[m.correct], raw:m });
     }
     if(type==='word_order'){
@@ -1271,18 +1435,9 @@ const Exercise = {
     }
   },
   grade(exObj, userInput){
-    const norm = Utils.normalize;
-    if(exObj.type==='fill_blank' || exObj.type==='error_correction' || exObj.type==='dictation'){
-      const ok = exObj.answers.some(a=>norm(a)===norm(userInput));
-      return ok;
-    }
-    if(exObj.type==='multiple_choice' || exObj.type==='listening'){
-      return exObj.answers.some(a=>norm(a)===norm(userInput));
-    }
-    if(exObj.type==='word_order'){
-      return exObj.answers.some(a=>norm(a)===norm(userInput));
-    }
-    return null; // production: ungraded, self-rated
+    if(exObj.type==='production') return null;      // free writing: not graded
+    const norm = Utils.looseNormalize;
+    return exObj.answers.some(a=>norm(a)===norm(userInput));
   }
 };
 
@@ -1318,26 +1473,27 @@ const ReviewSession = {
     }
 
     this.state = {
-      mode,
+      mode, lessonId:(opts && opts.lessonId) || null,
       conceptsById: Object.fromEntries(queue.map(c=>[c.id,c])),
       introQueue, steps, stepIndex:0,
       correctCount:0,
       currentExercise:null, currentStep:null, answered:false, isCorrect:null,
       showIntro:false, introConceptId:null,
-      showMistakeReview:false, mistakeConceptId:null, retryCounts:{},
+      showMistakeReview:false, mistakeConceptId:null, retryCounts:{}, used:{}, results:{}, lastType:{},
       startedAt:Date.now(), done:false,
       focusType: (mode==='listening') ? ['listening','dictation'] : (mode==='production' ? ['error_correction','word_order','production'] : null)
     };
     this.advance();
     return true;
   },
-  pickTypeFor(concept, srs, repsOverride){
+  pickTypeFor(concept, srs, repsOverride, avoid){
     const st = this.state;
     if(st.focusType){
-      const applicable = Exercise.applicableTypes(concept, repsOverride!=null?repsOverride:srs.repetitions).filter(t=>st.focusType.includes(t));
-      return applicable.length ? applicable[Math.floor(Math.random()*applicable.length)] : Exercise.pickType(concept, srs, repsOverride);
+      let applicable = Exercise.applicableTypes(concept, repsOverride!=null?repsOverride:srs.repetitions).filter(t=>st.focusType.includes(t));
+      if(avoid && applicable.length>1) applicable = applicable.filter(t=>t!==avoid);
+      return applicable.length ? applicable[Math.floor(Math.random()*applicable.length)] : Exercise.pickType(concept, srs, repsOverride, avoid);
     }
-    return Exercise.pickType(concept, srs, repsOverride);
+    return Exercise.pickType(concept, srs, repsOverride, avoid);
   },
   // Moves to whatever should be shown next: remaining intros first, then the next exercise
   // step, then the session summary once everything is done.
@@ -1359,10 +1515,17 @@ const ReviewSession = {
     // above wherever the concept's real progress currently places it — so a session always
     // moves from easiest to hardest, and a well-practiced concept starts (and finishes) harder.
     const baseTier = Exercise.tierFor(srs.repetitions);
-    const sessionTier = Math.min(4, baseTier + step.attemptIndex);
+    // Dictation and free production need spacing first: until a concept has passed
+    // MIN_REPS_FOR_TIER4 spaced reviews, a sitting stops at tier 3 (recognition + constrained production).
+    const maxTier = srs.repetitions >= this.MIN_REPS_FOR_TIER4 ? 4 : 3;
+    const sessionTier = Math.min(maxTier, baseTier + step.attemptIndex);
     const repsForTier = { 1:0, 2:1, 3:3, 4:5 }[sessionTier];
-    const type = this.pickTypeFor(concept, srs, repsForTier);
-    st.currentExercise = Exercise.generate(concept, type, Data.allConcepts());
+    const all = Data.allConcepts();
+    let type = this.pickTypeFor(concept, srs, repsForTier, st.lastType[concept.id]);
+    // multiple choice / listening need other concepts to build the options from
+    if(!Exercise.hasOptionsFor(type, concept, all)) type = Exercise.fallbackType(concept, sessionTier);
+    st.lastType[concept.id] = type;
+    st.currentExercise = Exercise.generate(concept, type, all, st.used);
     st.currentStep = step;
     st.answered = false; st.isCorrect = null;
   },
@@ -1384,6 +1547,7 @@ const ReviewSession = {
     st.answered = true; st.isCorrect = isCorrect; st.lastInput = userInput;
     if(isCorrect !== null){
       SRS.recordAttempt(ex.conceptId, ex.type, isCorrect);
+      (st.results[ex.conceptId] = st.results[ex.conceptId] || []).push(!!isCorrect);
       if(isCorrect) st.correctCount++;
       else Data.addMistake({ conceptId:ex.conceptId, exerciseType:ex.type, userAnswer:userInput, expected:ex.answers?ex.answers[0]:'' });
     }
@@ -1395,6 +1559,18 @@ const ReviewSession = {
   // confusing item can't grow the session forever. SRS scheduling for the concept only
   // finalises once no attempts of it remain pending.
   MAX_RETRIES_PER_CONCEPT: 2,
+  MIN_REPS_FOR_TIER4: 2,
+  // The SRS rating uses every graded attempt of the concept in this session, not just the last one.
+  // Free production is ungraded, so it never counts for or against the concept.
+  ratingFromResults(results){
+    if(!results || !results.length) return 'good';
+    const wrong = results.filter(r=>!r).length;
+    if(!results[results.length-1]) return 'again';        // still failing at the end
+    const rate = wrong / results.length;
+    if(rate <= 0.25) return 'good';                         // at most a slip
+    if(rate <= 0.5) return 'hard';
+    return 'again';
+  },
   continueFromExercise(){
     const st = this.state;
     const ex = st.currentExercise;
@@ -1414,8 +1590,7 @@ const ReviewSession = {
 
     const hasMoreForConcept = st.steps.slice(st.stepIndex+1).some(s=>s.conceptId===ex.conceptId);
     if(!hasMoreForConcept){
-      const rating = ex.type==='production' ? 'good' : (st.isCorrect ? 'good' : 'again');
-      SRS.schedule(ex.conceptId, rating);
+      SRS.schedule(ex.conceptId, this.ratingFromResults(st.results[ex.conceptId]));
       Data.saveConcepts();
     }
 
@@ -1683,7 +1858,7 @@ function viewConceptDetail(id){
         <div class="row" style="align-items:center;margin-bottom:8px;">
           <button class="btn ghost" data-action="speak" data-text="${Utils.escapeHtml(e.text)}" data-lang="${c.language}">🔊</button>
           ${recordWidgetHtml(c.id+':ex:'+i)}
-          <p style="margin:0;">${Utils.escapeHtml(e.text)}</p>
+          <p style="margin:0;">${Utils.escapeHtml(e.text)}${e.translation ? `<br><span class="faint" style="font-style:italic;">${Utils.escapeHtml(e.translation)}</span>` : ''}</p>
         </div>`).join('') || '<p class="faint">No examples yet.</p>'}
 
       ${c.etymology?`<h3 style="margin-top:20px;">Where it comes from</h3><p class="muted">${Utils.escapeHtml(c.etymology)}</p>`:''}
@@ -1725,7 +1900,7 @@ function lessonCardHtml(l){
     <p class="faint">${pct}% complete · ${total} concepts</p>
     <div class="btn-row">
       <button class="btn secondary" data-action="view-lesson" data-id="${l.id}">Open</button>
-      <button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Review</button>
+      ${lessonStudyBtn(l, true)}
     </div>
   </div>`;
 }
@@ -1788,6 +1963,23 @@ function lessonExplainHtml(l){
     ${!obj.length && !l.explanation ? '<p class="faint">Esta lección no tiene objetivos: la explicación se inferirá de sus conceptos.</p>' : ''}`;
 }
 
+function lessonStudyBtn(l, short){
+  const b = SRS.lessonBatch(l.id);
+  if(!b.batch.length) return '';
+  const fresh = b.newLeft>0, extra = b.batch.length - b.newInBatch;
+  const label = short
+    ? (fresh ? `Study next ${b.batch.length}` : `Review ${b.batch.length}`)
+    : (fresh ? `Study next batch (${b.newInBatch} new${extra ? ' + '+extra+' to review' : ''})` : `Review the ${b.batch.length} weakest`);
+  return `<button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">${label}</button>`;
+}
+function lessonProgressLine(l){
+  const b = SRS.lessonBatch(l.id), size = SRS.LESSON_BATCH;
+  if(!b.total) return '';
+  return b.newLeft>0
+    ? `${b.studied} of ${b.total} studied · batch ${Math.floor(b.studied/size)+1} of ${Math.ceil(b.total/size)}`
+    : `All ${b.total} concepts studied`;
+}
+
 function viewLessonDetail(id){
   const l = Data.getLesson(id);
   if(!l) return `<div class="empty-state">Lesson not found.</div>`;
@@ -1798,7 +1990,8 @@ function viewLessonDetail(id){
       <span class="eyebrow">${l.level||''} · ${l.language}</span>
       <h1>${Utils.escapeHtml(l.title)}</h1>
       <div id="lessonExplainHost">${lessonExplainHtml(l)}</div>
-      <button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Review this lesson</button>
+      <p class="faint">${lessonProgressLine(l)}</p>
+      ${lessonStudyBtn(l, false)}
     </div>
     <div style="margin-top:14px;">${concepts.map(conceptCardHtml).join('')}</div>
   `;
@@ -2027,7 +2220,7 @@ function viewConceptCard(conceptId, opts){
         <div class="row" style="align-items:center;margin-bottom:8px;">
           <button class="btn ghost" data-action="speak" data-text="${Utils.escapeHtml(e.text)}" data-lang="${c.language}">🔊</button>
           ${recordWidgetHtml(c.id+':ex:'+i)}
-          <p style="margin:0;">${Utils.escapeHtml(e.text)}</p>
+          <p style="margin:0;">${Utils.escapeHtml(e.text)}${e.translation ? `<br><span class="faint" style="font-style:italic;">${Utils.escapeHtml(e.translation)}</span>` : ''}</p>
         </div>`).join('')}` : ''}
 
       ${c.etymology ? `<h3 style="margin-top:18px;">Where it comes from</h3><p class="muted">${Utils.escapeHtml(c.etymology)}</p>` : ''}
@@ -2054,11 +2247,23 @@ function viewExercise(){
   // nothing (word order, error correction, free production) rather than just recognise it.
   const translationHint = concept.translation
     ? `<p class="faint" style="font-style:italic;margin:-4px 0 12px;">${Utils.escapeHtml(concept.translation)}</p>` : '';
+  const hintHtml = (ex.raw && ex.raw.hint) ? `<p class="faint" style="margin:-8px 0 12px;">💡 ${Utils.escapeHtml(ex.raw.hint)}</p>` : '';
+  // the translation of this very sentence beats the concept-level one when the author provided it
+  const sentenceHint = (ex.type==='word_order' && ex.raw && ex.raw.translation)
+    ? `<p class="faint" style="font-style:italic;margin:-4px 0 12px;">${Utils.escapeHtml(ex.raw.translation)}</p>` : translationHint;
   if(ex.type==='fill_blank'){
     body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
+      ${hintHtml}
       <input type="text" class="blank-input" id="answerInput" placeholder="type the missing part" autocomplete="off">`;
+  } else if(ex.type==='meaning_choice' || ex.type==='expression_choice'){
+    body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
+      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+  } else if(ex.type==='choose_correct'){
+    body = `<p class="faint">Which sentence is correct?</p>
+      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
   } else if(ex.type==='multiple_choice'){
     body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
+      ${hintHtml}
       <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
   } else if(ex.type==='listening'){
     body = `<p class="faint">Which expression did you hear?</p>
@@ -2078,7 +2283,7 @@ function viewExercise(){
       body = `<p class="faint">Your answer:</p><p class="prompt-text">${Utils.escapeHtml(st.lastInput||'')}</p>`;
     } else {
       body = `<p class="faint">Tap a word to place it, tap a placed word to send it back, or drag a placed word between two others to reorder.</p>
-      ${translationHint}
+      ${sentenceHint}
       <div class="word-answer" id="wordAnswer"></div>
       <div class="word-bank" id="wordBank"></div>
       <input type="hidden" id="answerInput" value="">`;
@@ -2125,7 +2330,11 @@ function viewSessionSummary(){
       <h1>${pct}% accuracy</h1>
       <p class="muted">${st.correctCount} of ${total} answered correctly.</p>
       <div class="btn-row" style="justify-content:center;">
-        <a class="btn" href="#/dashboard">Back to dashboard</a>
+        ${(()=>{ if(st.mode!=='lesson' || !st.lessonId) return '';
+          const l = Data.getLesson(st.lessonId); if(!l) return '';
+          const b = SRS.lessonBatch(l.id);
+          return b.newLeft>0 ? `<button class="btn" data-action="start-review" data-mode="lesson" data-lesson="${l.id}">Next batch (${b.batch.length}) →</button>` : ''; })()}
+        <a class="btn ${st.mode==='lesson' && st.lessonId && SRS.lessonBatch(st.lessonId).newLeft>0 ? 'secondary' : ''}" href="#/dashboard">Back to dashboard</a>
         <a class="btn secondary" href="#/stats">View statistics</a>
       </div>
     </div>
@@ -2313,7 +2522,7 @@ function wireExercise(){
       const val = btn.dataset.option;
       const isCorrect = ReviewSession.submit(val);
       document.querySelectorAll('.option').forEach(b=>{
-        if(Utils.normalize(b.dataset.option)===Utils.normalize(ex.answers[0])) b.classList.add('correct');
+        if(Utils.looseNormalize(b.dataset.option)===Utils.looseNormalize(ex.answers[0])) b.classList.add('correct');
         else if(b===btn && !isCorrect) b.classList.add('incorrect');
       });
       render();
@@ -2356,7 +2565,7 @@ document.addEventListener('click', e=>{
     if(el.dataset.lesson) opts.lessonId = el.dataset.lesson;
     const started = ReviewSession.start(mode, opts);
     if(!started){ Utils.toast('Nothing to review for this mode yet.'); return; }
-    location.hash = '#/review';
+    if(location.hash === '#/review') render(); else location.hash = '#/review';
   }
   else if(action==='open-concept'){ location.hash = '#/library/'+el.dataset.id; }
   else if(action==='view-lesson'){ location.hash = '#/lessons/'+el.dataset.id; }
@@ -2466,7 +2675,8 @@ function wireImportModal(){
       if(!result.ok){
         document.getElementById('importErrors').innerHTML = result.errors.map(Utils.escapeHtml).join('<br>');
       } else {
-        Utils.toast('Lesson "'+result.lesson.title+'" installed.');
+        const w = result.warnings || [];
+        Utils.toast('Lesson "'+result.lesson.title+'" installed.'+(w.length ? ' ⚠ '+w.join(' ') : ''), w.length ? 9000 : 0);
         closeModal(); render();
       }
     };

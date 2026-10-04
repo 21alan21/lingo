@@ -31,6 +31,58 @@ IndexedDB `lingua-field`, almacén `kv`, con estas claves: `concepts`, `lessons`
 
 La clave `ai` (API key de Gemini, modelo y contador de uso) **no entra en ningún backup ni exportación**.
 
+## Ejercicios y corrección
+
+| Tipo | Qué hace | Modalidad |
+|---|---|---|
+| Multiple choice | Elegir el fragmento que completa una frase | lectura |
+| Fill in the blank | Escribir el fragmento que falta | lectura |
+| Which sentence is correct | Elegir entre la frase correcta y una incorrecta (de `commonMistakes`) | lectura |
+| Meaning choice | Elegir el significado de la expresión (usa `meaning`) | lectura |
+| Expression choice | Elegir la expresión que corresponde a un significado o a un sinónimo (usa `meaning` y `synonyms`) | lectura |
+| Listening | Oír una frase y elegir la expresión | escucha |
+| Word order | Ordenar las palabras de una frase | producción |
+| Error correction | Reescribir correctamente una frase con error | producción |
+| Dictation | Escribir lo que se oye | escucha |
+| Free production | Escribir una frase propia (sin calificar) | producción |
+
+La dificultad sube por niveles (1 a 4) y nunca retrocede dentro de una sesión. Dos reglas la suavizan:
+
+- **El dictado y la escritura libre (nivel 4) no aparecen hasta que el concepto ha superado 2 repasos espaciados.** Antes, una sesión llega como máximo al nivel 3 (reconocimiento y producción guiada). Un concepto nuevo recorre, por ejemplo: completar → escucha → ordenar → corregir.
+- **Dos ejercicios seguidos del mismo concepto no son del mismo tipo** cuando hay alternativa en ese nivel, también en los reintentos tras un fallo.
+- **Cómo se eligen las opciones incorrectas.** Solo salen de conceptos del mismo idioma. Van primero los de `related` (los que de verdad se confunden con este), luego los del mismo tipo y después el resto. Nunca se usa como distractor un concepto listado en `synonyms` ni uno con el mismo `meaning`, porque sería también una respuesta válida.
+- **En los huecos de una frase** se prefieren opciones con la misma forma gramatical que la respuesta (-ing, -ed o forma base) y con la misma mayúscula inicial. Así la forma no delata la respuesta: en "I keep ___ my appointment" no sirve que solo una opción termine en -ing. En los phrasal verbs integrados, la respuesta delatada por su forma bajó del 25 % al 11 % (la comprobación es solo para inglés).
+- Los ejercicios de significado solo necesitan `meaning`: funcionan aunque el concepto no tenga ejemplos. "Meaning choice" va en el nivel 1 y "Expression choice" en el nivel 2.
+- Si no hay otros conceptos con los que formar las opciones, el ejercicio se sustituye por otro.
+
+**Programación del repaso (SRS).** Al terminar los ejercicios de un concepto en una sesión, se mira el conjunto de sus intentos calificados, no solo el último: hasta un 25 % de fallos cuenta como "good", hasta el 50 % como "hard", más que eso como "again", y terminar fallando siempre es "again". La escritura libre no se califica y no cuenta a favor ni en contra. Las respuestas escritas se comparan sin tener en cuenta mayúsculas, puntuación, apóstrofos curvos o rectos, ni la diferencia entre `n't` y `not` (`wouldn’t`, `wouldn't` y `would not` valen lo mismo). Los acentos sí cuentan.
+
+### Qué ejercicios salen según el tipo de concepto
+
+Cada nivel de dificultad tiene sus propios tipos de ejercicio (nivel 1: opción múltiple, completar, significado; nivel 2: escucha, frase correcta, expresión; nivel 3: ordenar, corregir; nivel 4: dictado, escritura libre). El tipo de concepto decide cuáles se prefieren dentro de cada nivel. Reparto aproximado medido en simulación:
+
+| Tipo de concepto | Nivel 1 | Nivel 2 | Nivel 3 | Nivel 4 |
+|---|---|---|---|---|
+| `idiom` | significado 57 % | expresión 50 % | ordenar 66 % | libre 52 % |
+| `phrasal_verb` | opción múltiple y completar | expresión y frase correcta | corregir | libre y dictado |
+| `vocabulary` | significado 44 % | expresión 49 % | corregir y ordenar | libre y dictado |
+| `collocation` | opción múltiple y completar 42 % cada una | frase correcta 61 % | corregir 75 % | libre 67 % |
+| `expression` | las tres por igual | escucha 50 % | ordenar 66 % | libre 57 % |
+| `grammar_pattern` / `sentence_pattern` | completar 51 % | frase correcta 69 % | corregir 67 % | libre 75 % |
+
+La lógica: en un idiom importa entender el significado; en una colocación, distinguir la combinación correcta de la incorrecta; en gramática, detectar y corregir errores, y en una expresión funcional, producirla. Los pesos están en `Exercise.TYPE_WEIGHTS`, en `index.html`, y se pueden retocar. Si un concepto no tiene los datos que necesita un ejercicio (por ejemplo, no tiene `commonMistakes`), ese ejercicio simplemente no sale.
+
+## Estudio de una lección (por tandas)
+
+Una lección se estudia en **tandas de 5 conceptos** (constante `SRS.LESSON_BATCH` en `index.html`), así que una lección grande no se convierte en una sesión interminable. Cada tanda son 5 conceptos × 4 ejercicios, con sus tarjetas de presentación al principio.
+
+- La app recuerda por dónde vas: la siguiente tanda toma los 5 primeros conceptos de la lección que aún no has estudiado, en el orden del archivo. Un concepto cuenta como estudiado cuando ha terminado sus ejercicios en una sesión.
+- Si quedan menos de 5 nuevos, la tanda se completa con repasos: los más atrasados o débiles.
+- Cuando ya has estudiado toda la lección, el botón pasa a repasar los 5 más débiles.
+- Al terminar una tanda, el resumen ofrece **Next batch** mientras queden conceptos nuevos.
+- En el detalle de la lección ves el progreso (por ejemplo "5 of 12 studied · batch 2 of 3") y en la lista, el botón "Study next 5".
+- "new per day" en Settings no afecta a las lecciones, solo a Start Learning.
+
 ## Formato del archivo de lección (importar)
 
 Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons → Import Lesson (JSON)**.
@@ -62,7 +114,14 @@ Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons 
       "etymology": "Opcional: de dónde viene la expresión.",
       "patterns": ["check in (at + place)"],
       "examples": [
-        { "text": "We checked in two hours early.", "blank": "checked in", "answers": ["checked in"] }
+        {
+          "text": "We checked in two hours early.",
+          "blank": "checked in",
+          "answers": ["checked in"],
+          "hint": "past tense of the phrasal verb",
+          "translation": "Hicimos el registro dos horas antes.",
+          "distractors": ["checked on", "checked up", "check in"]
+        }
       ],
       "commonMistakes": [
         { "wrong": "We checked at the hotel.", "correct": "We checked in at the hotel." }
@@ -94,8 +153,21 @@ Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons 
 - **Obligatorios**: `id` (único en el archivo), `type`, `expression`, `meaning`.
 - **`type`**: `vocabulary`, `phrasal_verb`, `idiom`, `collocation`, `expression`, `grammar_pattern` o `sentence_pattern`.
 - **Opcionales**: `level` (por defecto B2), `translation`, `ipa`, `etymology`, `notes`, `patterns`, `examples`, `commonMistakes`, `synonyms`, `antonyms`, `related`, `tags`.
-- **`examples`**: array de `{ text, blank, answers }`. `blank` es el fragmento que se oculta en los ejercicios de completar y `answers` las respuestas válidas.
-- **`commonMistakes`**: array de `{ wrong, correct }`, usado en los ejercicios de corrección de errores.
+- **`examples`**: array de objetos. Cada uno lleva:
+
+  | Campo | Obligatorio | Para qué sirve |
+  |---|---|---|
+  | `text` | sí | La frase completa. |
+  | `blank` | sí | Fragmento de `text` (debe aparecer tal cual) que se oculta en los ejercicios de completar y de opción múltiple. |
+  | `answers` | sí | Array con las respuestas válidas para el hueco. |
+  | `hint` | no | Pista breve que se ve bajo el hueco en completar y en opción múltiple, por ejemplo "result in the past". Sirve para evitar respuestas ambiguas, sobre todo en gramática. No debe contener la respuesta. |
+  | `translation` | no | Traducción de **esa** frase. Se muestra bajo cada ejemplo en la tarjeta y en el detalle, y en "ordenar palabras" como pista (si falta, se usa la `translation` del concepto, que en gramática suele ser una fórmula y no una frase). |
+  | `distractors` | no | Opciones incorrectas plausibles para la opción múltiple de esa frase (ver abajo). |
+
+  **Recomendado: 4 o más ejemplos por concepto.** Las frases se reparten sin repetirse dentro de una sesión mientras haya ejemplos sin usar; con menos de 3 se repetirán, y la importación te avisa.
+
+  **Cómo escribir `distractors`.** Deben ser formas que fallen *en ese hueco*: el mismo tipo de pieza que la respuesta, pero incorrecta. Evita las que serían también correctas (en "If he spoke Japanese, he ___ the job", `would get` es una frase válida y no sirve). Con 2 o más, la opción múltiple usa solo las tuyas; con 0 o 1, se completan con opciones automáticas hasta tener 3. La importación rechaza un distractor que coincida con una respuesta correcta.
+- **`commonMistakes`**: array de `{ wrong, correct }` (la frase incorrecta y su versión correcta, con la misma idea). Se usan en dos ejercicios: "¿Qué frase es correcta?" (la frase incorrecta es el distractor) y la corrección de errores escrita. Sin `commonMistakes`, el concepto no tendrá ninguno de los dos, y la importación te avisa.
 
 ### Qué pasa al reimportar
 
@@ -106,7 +178,7 @@ Un archivo `.json` con una lección y sus conceptos. Se importa desde **Lessons 
 
 ### Errores de validación
 
-La importación se rechaza, con un mensaje por problema, si falta `formatVersion`, `lesson`, `lesson.id`, `lesson.title` o `lesson.language`; si `concepts` está vacío; si un concepto no tiene `id`, `expression`, `meaning` o `type`, o repite un `id`; si `examples` no es un array; si `objectives` no es un array de textos no vacíos; o si `description` o `explanation` no son un texto.
+La importación se rechaza, con un mensaje por problema, si falta `formatVersion`, `lesson`, `lesson.id`, `lesson.title` o `lesson.language`; si `concepts` está vacío; si un concepto no tiene `id`, `expression`, `meaning` o `type`, o repite un `id`; si `examples` no es un array; si `objectives` no es un array de textos no vacíos; si un ejemplo no es un objeto con `text`, un `blank` que aparezca en el `text` y un `answers` con textos; si `hint` o `translation` no son un texto; o si `distractors` no es un array de textos o contiene una respuesta correcta; y si `description` o `explanation` no son un texto.
 
 ## IA (Gemini)
 
