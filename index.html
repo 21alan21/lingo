@@ -170,9 +170,23 @@ button{font-family:var(--font-body);cursor:pointer;}
 .option.correct{border-color:var(--teal);background:var(--teal-soft);}
 .option.incorrect{border-color:var(--rust);background:var(--rust-soft);}
 .word-chip{display:inline-block;border:1px solid var(--line);background:#fff;padding:6px 10px;border-radius:6px;margin:3px;font-size:.9rem;}
+.word-chip{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
 .word-chip.used{opacity:.35;pointer-events:none;}
-.word-chip.answer-chip{cursor:grab;touch-action:none;user-select:none;}
-.word-chip.answer-chip.dragging{opacity:.5;cursor:grabbing;border-color:var(--indigo);box-shadow:var(--shadow);}
+.word-chip:focus-visible{outline:2px solid var(--indigo);outline-offset:1px;}
+.word-chip.dragging{opacity:.3;}
+.word-chip.match{border-color:var(--indigo);background:var(--indigo-soft);}
+.blank-input.nomatch{border-color:var(--rust);}
+.opt-num{display:inline-block;min-width:1.5em;margin-right:6px;color:var(--ink-faint);font-family:var(--font-mono);font-size:.8rem;}
+.option.kbd-focus{border-color:var(--indigo);box-shadow:0 0 0 2px var(--indigo-soft);}
+@media (pointer:coarse){ .kbd-hint{display:none;} }
+.drag-ghost{position:fixed;z-index:1000;pointer-events:none;margin:0;opacity:.95;border-color:var(--indigo);box-shadow:var(--shadow);}
+.drop-marker{display:inline-block;width:3px;height:26px;background:var(--indigo);border-radius:2px;margin:3px 2px;vertical-align:middle;}
+.word-answer.empty::before{content:'tap or drag words here';color:var(--ink-faint, #8a8f98);font-size:.85rem;padding:4px;}
+body.is-dragging{user-select:none;-webkit-user-select:none;}
+.diff-bad{background:var(--rust-soft);color:var(--rust);border-radius:3px;padding:0 3px;text-decoration:line-through;}
+.diff-good{background:var(--teal-soft);color:var(--teal);border-radius:3px;padding:0 3px;font-weight:600;}
+.cmp{display:flex;gap:10px;margin-top:8px;align-items:baseline;}
+.cmp-label{flex:0 0 88px;font-size:.7rem;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.05em;opacity:.8;}
 .word-bank, .word-answer{min-height:44px;padding:6px;border:1px dashed var(--line);border-radius:8px;margin-bottom:10px;}
 .textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8px;padding:10px;font-family:var(--font-body);font-size:.92rem;}
 .speak-btn{
@@ -1476,10 +1490,10 @@ const ReviewSession = {
       mode, lessonId:(opts && opts.lessonId) || null,
       conceptsById: Object.fromEntries(queue.map(c=>[c.id,c])),
       introQueue, steps, stepIndex:0,
-      correctCount:0,
+      correctCount:0, attempts:0,
       currentExercise:null, currentStep:null, answered:false, isCorrect:null,
       showIntro:false, introConceptId:null,
-      showMistakeReview:false, mistakeConceptId:null, retryCounts:{}, used:{}, results:{}, lastType:{},
+      showMistakeReview:false, mistakeConceptId:null, retryCounts:{}, tries:0, used:{}, results:{}, lastType:{},
       startedAt:Date.now(), done:false,
       focusType: (mode==='listening') ? ['listening','dictation'] : (mode==='production' ? ['error_correction','word_order','production'] : null)
     };
@@ -1510,6 +1524,16 @@ const ReviewSession = {
     if(st.stepIndex >= st.steps.length){ st.done = true; return; }
     const step = st.steps[st.stepIndex];
     const concept = st.conceptsById[step.conceptId];
+    if(step.retryEx){                       // a missed exercise coming back later: same exercise, fresh order
+      const rex = step.retryEx;
+      if(rex.options) rex.options = Utils.shuffle(rex.options.slice());
+      if(rex.words) rex.words = Utils.shuffle(rex.words.slice());
+      st.lastType[concept.id] = rex.type;
+      st.currentExercise = rex; st.currentStep = step;
+      st.tries = step.tries || 0;
+      st.answered = false; st.isCorrect = null;
+      return;
+    }
     const srs = Data.getSrs(concept.id);
     // Each attempt of the same concept within a session climbs exactly one difficulty tier
     // above wherever the concept's real progress currently places it — so a session always
@@ -1526,6 +1550,7 @@ const ReviewSession = {
     if(!Exercise.hasOptionsFor(type, concept, all)) type = Exercise.fallbackType(concept, sessionTier);
     st.lastType[concept.id] = type;
     st.currentExercise = Exercise.generate(concept, type, all, st.used);
+    st.tries = 0;
     st.currentStep = step;
     st.answered = false; st.isCorrect = null;
   },
@@ -1546,19 +1571,36 @@ const ReviewSession = {
     const isCorrect = Exercise.grade(ex, userInput);
     st.answered = true; st.isCorrect = isCorrect; st.lastInput = userInput;
     if(isCorrect !== null){
+      st.attempts++;
       SRS.recordAttempt(ex.conceptId, ex.type, isCorrect);
       (st.results[ex.conceptId] = st.results[ex.conceptId] || []).push(!!isCorrect);
       if(isCorrect) st.correctCount++;
-      else Data.addMistake({ conceptId:ex.conceptId, exerciseType:ex.type, userAnswer:userInput, expected:ex.answers?ex.answers[0]:'' });
+      else {
+        st.tries = (st.tries||0) + 1;
+        if(st.tries===1) Data.addMistake({ conceptId:ex.conceptId, exerciseType:ex.type, userAnswer:userInput, expected:ex.answers?ex.answers[0]:'' });   // once per exercise
+      }
     }
     return isCorrect;
   },
-  // Called when the learner clicks "Continue" after seeing feedback. If the answer was
-  // wrong, a fresh attempt of the same concept is requeued later in the session — so getting
-  // it wrong means practicing it again, not just reading a reminder — capped so a genuinely
-  // confusing item can't grow the session forever. SRS scheduling for the concept only
-  // finalises once no attempts of it remain pending.
-  MAX_RETRIES_PER_CONCEPT: 2,
+  // A missed exercise is not repeated right away: it is put back into the queue a few steps later
+  // (RETRY_GAP steps ahead, or at the very end if fewer remain) and comes back until it is answered
+  // right. Only when nothing else is left does it return immediately. After MIN_TRIES_BEFORE_SKIP
+  // misses the learner may skip it (counts as failed, and a concept refresher is shown), so a hard
+  // item never becomes a wall.
+  MIN_TRIES_BEFORE_SKIP: 1,
+  RETRY_GAP: 3,
+  canSkip(){ return (this.state.tries||0) >= this.MIN_TRIES_BEFORE_SKIP; },
+  willRepeatNow(){ const st = this.state; return st.steps.length - (st.stepIndex+1) <= 0; },
+  deferRetry(){
+    const st = this.state, ex = st.currentExercise;
+    const remaining = st.steps.length - (st.stepIndex+1);
+    const pos = st.stepIndex + 1 + Math.min(this.RETRY_GAP, Math.max(0, remaining));
+    st.steps.splice(pos, 0, { conceptId:ex.conceptId, attemptIndex:(st.currentStep ? st.currentStep.attemptIndex : 0), retryEx:ex, tries:st.tries||0 });
+    st.stepIndex++;
+    this.advance();
+  },
+  // Called on Continue after a right answer, or on Skip after repeated misses. SRS scheduling for
+  // the concept only finalises once no attempts of it remain pending.
   MIN_REPS_FOR_TIER4: 2,
   // The SRS rating uses every graded attempt of the concept in this session, not just the last one.
   // Free production is ungraded, so it never counts for or against the concept.
@@ -1574,19 +1616,7 @@ const ReviewSession = {
   continueFromExercise(){
     const st = this.state;
     const ex = st.currentExercise;
-    const step = st.currentStep;
-    const wasWrong = ex.type!=='production' && st.isCorrect===false;
-
-    if(wasWrong){
-      const retryCount = st.retryCounts[ex.conceptId] || 0;
-      if(retryCount < this.MAX_RETRIES_PER_CONCEPT){
-        st.retryCounts[ex.conceptId] = retryCount + 1;
-        // Insert right after this step (not a random later spot) so the retry stays at the
-        // same difficulty and never appears "before" a harder attempt of the same concept
-        // that's already queued — the easy→hard order for this concept stays intact.
-        st.steps.splice(st.stepIndex + 1, 0, { conceptId: ex.conceptId, attemptIndex: step.attemptIndex });
-      }
-    }
+    const wasWrong = ex.type!=='production' && st.isCorrect===false;   // only reachable by skipping
 
     const hasMoreForConcept = st.steps.slice(st.stepIndex+1).some(s=>s.conceptId===ex.conceptId);
     if(!hasMoreForConcept){
@@ -2188,11 +2218,8 @@ function addConceptModalHtml(){
 }
 
 /* ---------- Exercise / Review screens ---------- */
-function progressBarHtml(st){
-  const pct = st.steps.length ? Math.round(st.stepIndex/st.steps.length*100) : 0;
-  return `<div class="faint" style="margin-bottom:6px;">${Math.min(st.stepIndex+1, st.steps.length)} / ${st.steps.length}</div>
-    <div class="mastery-track" style="margin-bottom:18px;"><div class="mastery-fill" style="width:${pct}%"></div></div>`;
-}
+/* No progress counter or bar during a session: missed exercises come back later, so a total would keep moving. */
+function progressBarHtml(st){ return ''; }
 
 function viewConceptCard(conceptId, opts){
   const st = ReviewSession.state;
@@ -2251,42 +2278,51 @@ function viewExercise(){
   // the translation of this very sentence beats the concept-level one when the author provided it
   const sentenceHint = (ex.type==='word_order' && ex.raw && ex.raw.translation)
     ? `<p class="faint" style="font-style:italic;margin:-4px 0 12px;">${Utils.escapeHtml(ex.raw.translation)}</p>` : translationHint;
+  // typed answers stay visible (read-only) once checked, so they can be compared with the right one
+  const ro = st.answered ? ` value="${Utils.escapeHtml(st.lastInput||'')}" readonly` : '';
   if(ex.type==='fill_blank'){
+    // The sentence alone is often impossible to answer (many words fit), so always give a cue:
+    // the author's hint, else the meaning of the expression, plus the sentence translation if there is one.
+    const cue = (ex.raw && ex.raw.hint) ? ex.raw.hint : (concept.meaning || '');
+    const cueHtml = cue ? `<p class="faint" style="margin:-8px 0 12px;">💡 ${Utils.escapeHtml(cue)}</p>` : '';
+    const trHtml = (ex.raw && ex.raw.translation) ? `<p class="faint" style="font-style:italic;margin:-8px 0 12px;">${Utils.escapeHtml(ex.raw.translation)}</p>` : '';
+    const nWords = String((ex.answers && ex.answers[0]) || '').trim().split(/\s+/).filter(Boolean).length;
     body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
-      ${hintHtml}
-      <input type="text" class="blank-input" id="answerInput" placeholder="type the missing part" autocomplete="off">`;
+      ${trHtml}${cueHtml}
+      <input type="text" class="blank-input" id="answerInput" placeholder="type the missing part${nWords>1 ? ' ('+nWords+' words)' : ''}" autocomplete="off" autocapitalize="off" spellcheck="false"${ro}>`;
   } else if(ex.type==='meaning_choice' || ex.type==='expression_choice'){
     body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
-      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+      ${optionListHtml(ex, st)}`;
   } else if(ex.type==='choose_correct'){
     body = `<p class="faint">Which sentence is correct?</p>
-      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+      ${optionListHtml(ex, st)}`;
   } else if(ex.type==='multiple_choice'){
     body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
       ${hintHtml}
-      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+      ${optionListHtml(ex, st)}`;
   } else if(ex.type==='listening'){
     body = `<p class="faint">Which expression did you hear?</p>
       <button class="speak-btn" data-action="speak" data-text="${Utils.escapeHtml(ex.audioText)}" data-lang="${concept.language}">🔊</button>
-      <div class="option-list">${ex.options.map(o=>`<button class="option" data-option="${Utils.escapeHtml(o)}">${Utils.escapeHtml(o)}</button>`).join('')}</div>`;
+      ${optionListHtml(ex, st)}`;
   } else if(ex.type==='dictation'){
     body = `<p class="faint">Listen and write exactly what you hear.</p>
       <button class="speak-btn" data-action="speak" data-text="${Utils.escapeHtml(ex.audioText)}" data-lang="${concept.language}">🔊</button>
-      <input type="text" class="blank-input" id="answerInput" style="width:100%;" placeholder="type what you heard" autocomplete="off">`;
+      <input type="text" class="blank-input" id="answerInput" style="width:100%;" placeholder="type what you heard" autocomplete="off" autocapitalize="off" spellcheck="false"${ro}>`;
   } else if(ex.type==='error_correction'){
     body = `<p class="faint">Correct the sentence:</p>
       ${translationHint}
       <p class="prompt-text">❌ ${Utils.escapeHtml(ex.prompt)}</p>
-      <input type="text" class="blank-input" id="answerInput" style="width:100%;" placeholder="write the correct sentence" autocomplete="off">`;
+      <input type="text" class="blank-input" id="answerInput" style="width:100%;" placeholder="write the correct sentence" autocomplete="off" autocapitalize="off" spellcheck="false"${ro}>`;
   } else if(ex.type==='word_order'){
     if(st.answered){
-      body = `<p class="faint">Your answer:</p><p class="prompt-text">${Utils.escapeHtml(st.lastInput||'')}</p>`;
+      body = `${sentenceHint}`;          // the comparison with your answer is shown in the feedback below
     } else {
-      body = `<p class="faint">Tap a word to place it, tap a placed word to send it back, or drag a placed word between two others to reorder.</p>
+      body = `<p class="faint">Tap or drag the words into place, or type the first letters of the next word.</p>
       ${sentenceHint}
       <div class="word-answer" id="wordAnswer"></div>
       <div class="word-bank" id="wordBank"></div>
-      <input type="hidden" id="answerInput" value="">`;
+      <input type="hidden" id="answerInput" value="">
+      <input type="text" class="blank-input" id="wordPick" style="width:100%;" placeholder="type the first letters of a word to pick it" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type the first letters of a word to place it. Space or Enter confirms a word that is the start of another. Backspace on an empty box removes the last word.">`;
     }
   } else if(ex.type==='production'){
     body = `<p class="prompt-text">${Utils.escapeHtml(ex.prompt)}</p>
@@ -2306,29 +2342,76 @@ function viewExercise(){
   </div>`;
 }
 
-function renderFeedback(st, ex){
-  let banner = '';
-  if(ex.type==='production'){
-    banner = `<div class="feedback-banner ok">Reference example: "${Utils.escapeHtml(ex.reference)}"</div>`;
-  } else if(st.isCorrect){
-    banner = `<div class="feedback-banner ok">✅ Correct!</div>`;
-  } else {
-    banner = `<div class="feedback-banner bad">❌ Not quite. Expected: "${Utils.escapeHtml(ex.answers[0])}"</div>`;
+function optionListHtml(ex, st){
+  const norm = Utils.looseNormalize;
+  return `<div class="option-list">${ex.options.map((o,n)=>{
+    let cls = 'option';
+    if(st.answered){
+      if(ex.answers.some(a=>norm(a)===norm(o))) cls += ' correct';
+      else if(st.lastInput!=null && norm(o)===norm(st.lastInput)) cls += ' incorrect';
+    }
+    return `<button class="${cls}" data-option="${Utils.escapeHtml(o)}"${st.answered ? ' disabled' : ''}><span class="opt-num" aria-hidden="true">${n+1}</span>${Utils.escapeHtml(o)}</button>`;
+  }).join('')}</div>${st.answered ? '' : '<p class="faint kbd-hint" style="margin-top:8px;">Keyboard: 1–' + ex.options.length + ' to pick, or ↑ ↓ and Enter.</p>'}`;
+}
+
+/* Word-level comparison of what was typed against the right answer: words that differ are marked
+   in both lines (red/struck in yours, green in the right one). */
+function diffHtml(userStr, correctStr){
+  const tok = s => String(s||'').trim().split(/\s+/).filter(Boolean);
+  const u = tok(userStr), c = tok(correctStr), key = w => Utils.looseNormalize(w);
+  const n = u.length, m = c.length;
+  const dp = Array.from({length:n+1}, ()=>new Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--) for(let j=m-1;j>=0;j--)
+    dp[i][j] = key(u[i])===key(c[j]) ? dp[i+1][j+1]+1 : Math.max(dp[i+1][j], dp[i][j+1]);
+  const uBad = new Array(n).fill(true), cBad = new Array(m).fill(true);
+  let i = 0, j = 0;
+  while(i<n && j<m){
+    if(key(u[i])===key(c[j])){ uBad[i] = false; cBad[j] = false; i++; j++; }
+    else if(dp[i+1][j] >= dp[i][j+1]) i++; else j++;
   }
-  return `${banner}
-    <div class="btn-row"><button class="btn" id="continueBtn">Continue →</button></div>`;
+  const e = Utils.escapeHtml;
+  return {
+    user: u.map((w,k)=>uBad[k] ? `<span class="diff-bad">${e(w)}</span>` : e(w)).join(' '),
+    correct: c.map((w,k)=>cBad[k] ? `<span class="diff-good">${e(w)}</span>` : e(w)).join(' ')
+  };
+}
+
+function renderFeedback(st, ex){
+  if(ex.type==='production'){
+    return `<div class="feedback-banner ok">Reference example: "${Utils.escapeHtml(ex.reference)}"</div>
+      <div class="btn-row"><button class="btn" id="continueBtn">Continue →</button></div>`;
+  }
+  if(st.isCorrect){
+    return `<div class="feedback-banner ok">✅ Correct!</div>
+      <div class="btn-row"><button class="btn" id="continueBtn">Continue →</button></div>`;
+  }
+  const typed = ['fill_blank','dictation','error_correction','word_order'].includes(ex.type);
+  const user = String(st.lastInput==null ? '' : st.lastInput), correct = ex.answers[0];
+  let uHtml = user.trim() ? Utils.escapeHtml(user) : '<em>(nothing)</em>', cHtml = Utils.escapeHtml(correct);
+  if(typed && user.trim()){ const d = diffHtml(user, correct); uHtml = d.user; cHtml = d.correct; }
+  const others = (ex.answers||[]).slice(1);
+  const canSkip = ReviewSession.canSkip();
+  return `<div class="feedback-banner bad">
+      <div>❌ Not quite.</div>
+      <div class="cmp"><span class="cmp-label">Your answer</span><span>${uHtml}</span></div>
+      <div class="cmp"><span class="cmp-label">Correct</span><span>${cHtml}</span></div>
+      ${others.length ? `<div class="cmp"><span class="cmp-label">Also valid</span><span>${others.map(o=>Utils.escapeHtml(o)).join(' · ')}</span></div>` : ''}
+    </div>
+    <div class="btn-row"><button class="btn" id="retryBtn">${ReviewSession.willRepeatNow() ? 'Try again' : 'Continue →'}</button>${canSkip ? '<button class="btn ghost" id="skipBtn">Skip</button>' : ''}</div>
+    ${ReviewSession.willRepeatNow() ? '' : `<p class="faint" style="margin-top:8px;">We'll ask this one again a little later.</p>`}
+`;
 }
 
 function viewSessionSummary(){
   const st = ReviewSession.state;
-  const total = st.steps.length;
-  const pct = total ? Math.round(st.correctCount/total*100) : 0;
+  const total = st.attempts || 0;       // every graded answer, including the ones that were missed
+  const pct = total ? Math.round(st.correctCount/total*100) : null;
   return `
   <div class="exercise-shell">
     <div class="card" style="text-align:center;">
       <span class="eyebrow">Session complete</span>
-      <h1>${pct}% accuracy</h1>
-      <p class="muted">${st.correctCount} of ${total} answered correctly.</p>
+      <h1>${pct===null ? 'Nice work' : pct+'% accuracy'}</h1>
+      ${total ? `<p class="muted">${st.correctCount} of ${total} answers were correct.</p>` : ''}
       <div class="btn-row" style="justify-content:center;">
         ${(()=>{ if(st.mode!=='lesson' || !st.lessonId) return '';
           const l = Data.getLesson(st.lessonId); if(!l) return '';
@@ -2427,78 +2510,174 @@ function wireSettings(){
   });
 }
 
-/* Word-order exercise: tap a bank word to place it in the answer, tap a placed word to
-   send it back to the bank, or drag a placed word and drop it between two other placed
-   words to reorder. Uses pointer events (not native HTML5 drag) so touch works too. */
+/* Index where a dragged word would be inserted among the placed words, from the pointer position
+   and the on-screen rectangles of those words (in reading order, rows included). */
+function wordDropIndex(x, y, rects){
+  for(let i=0;i<rects.length;i++){
+    const r = rects[i];
+    if(y < r.top || (y <= r.bottom && x < r.left + r.width/2)) return i;
+  }
+  return rects.length;
+}
+
+/* Word-order exercise. Three ways to build the sentence:
+   - tap a word to place it (tap a placed word to send it back)
+   - drag a word from the bank into the answer at any position, reorder placed words, or drag one
+     back to the bank (pointer events, so mouse and touch behave the same)
+   - keyboard: type the first letters of a word in the box under the bank; as soon as only one
+     different word still matches, it is placed (Space/Enter places an exact match that is also the
+     start of a longer word; Backspace on an empty box removes the last placed word; Esc clears).
+     Tab to a word, Enter/Space to place or remove it, ←/→ to move a placed word, also work. */
 function wireWordOrder(ex){
   const bank = document.getElementById('wordBank');
   const answerEl = document.getElementById('wordAnswer');
   const hidden = document.getElementById('answerInput');
-  let chosen = []; // ordered list of indices into ex.words
+  let chosen = [];   // word indices in answer order
+  const pick = document.getElementById('wordPick');
+  let buf = '';      // letters typed so far for the next word
+  // Matching ignores case, accents and punctuation (so "é" is typed "e", "don't" is typed "dont").
+  const wkey = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+  const wkeys = ex.words.map(wkey);
+  const candidates = prefix => ex.words.map((w,i)=>i).filter(i=>!chosen.includes(i) && wkeys[i] && wkeys[i].startsWith(prefix));
+  function place(i){ chosen.push(i); buf=''; if(pick) pick.value=''; renderChips(); }
 
   function syncHidden(){ hidden.value = chosen.map(i=>ex.words[i]).join(' '); }
 
-  function returnToBank(i, chip){
-    chosen = chosen.filter(x=>x!==i);
-    chip.remove();
-    const bankChip = bank.querySelector(`.word-chip[data-idx="${i}"]`);
-    if(bankChip) bankChip.classList.remove('used');
-    syncHidden();
+  function chipEl(i, where){
+    const used = where==='bank' && chosen.includes(i);
+    const chip = document.createElement('span');
+    const isMatch = where==='bank' && !used && buf && wkeys[i].startsWith(buf);
+    chip.className = 'word-chip' + (used ? ' used' : '') + (isMatch ? ' match' : '') + (where==='answer' ? ' answer-chip' : '');
+    chip.textContent = ex.words[i];
+    chip.dataset.idx = i; chip.dataset.where = where;
+    chip.setAttribute('role','button');
+    chip.tabIndex = used ? -1 : 0;
+    chip.setAttribute('aria-label', ex.words[i] + (where==='answer' ? ', placed. Enter removes it, arrow keys move it.' : (used ? ', already used' : '. Enter adds it.')));
+    if(!used){
+      chip.addEventListener('pointerdown', e=>press(e, i, where, chip));
+      chip.addEventListener('keydown', e=>chipKey(e, i, where));
+    }
+    return chip;
   }
 
-  function makeAnswerChip(i){
-    const chip = document.createElement('span');
-    chip.className = 'word-chip answer-chip';
-    chip.textContent = ex.words[i];
-    chip.dataset.idx = i;
-    let dragging = false, moved = false;
+  function renderChips(focus){
+    bank.innerHTML = ''; answerEl.innerHTML = '';
+    ex.words.forEach((w,i)=>bank.appendChild(chipEl(i,'bank')));
+    chosen.forEach(i=>answerEl.appendChild(chipEl(i,'answer')));
+    answerEl.classList.toggle('empty', !chosen.length);
+    syncHidden();
+    if(focus){
+      const el = (focus.where==='answer' ? answerEl : bank).querySelector(`.word-chip[data-idx="${focus.i}"]`);
+      if(el) el.focus();
+    }
+  }
 
-    chip.addEventListener('pointerdown', e=>{
-      dragging = true; moved = false;
+  function chipKey(e, i, where){
+    if(e.key==='Enter' || e.key===' '){
+      e.preventDefault(); e.stopPropagation();                  // don't also trigger "Check"
+      if(where==='bank'){ chosen.push(i); renderChips({i, where:'answer'}); }
+      else { chosen = chosen.filter(x=>x!==i); renderChips({i, where:'bank'}); }
+    } else if(where==='answer' && (e.key==='ArrowLeft' || e.key==='ArrowRight')){
+      e.preventDefault(); e.stopPropagation();
+      const p = chosen.indexOf(i), q = p + (e.key==='ArrowLeft' ? -1 : 1);
+      if(q>=0 && q<chosen.length){ chosen[p] = chosen[q]; chosen[q] = i; renderChips({i, where:'answer'}); }
+    }
+  }
+
+  function press(e, i, from, chip){
+    if(e.pointerType==='mouse' && e.button!==0) return;
+    const sx = e.clientX, sy = e.clientY, pid = e.pointerId;
+    let drag = null;
+    const rect = el => el.getBoundingClientRect();
+    const inside = (r, x, y, pad) => x>=r.left-pad && x<=r.right+pad && y>=r.top-pad && y<=r.bottom+pad;
+    const zoneAt = (x, y) => inside(rect(answerEl), x, y, 14) ? 'answer' : (inside(rect(bank), x, y, 14) ? 'bank' : null);
+    const placed = () => Array.from(answerEl.querySelectorAll('.answer-chip')).filter(c=>c!==chip);
+
+    function showMarker(index){
+      if(!drag.marker){ drag.marker = document.createElement('span'); drag.marker.className = 'drop-marker'; }
+      const list = placed();
+      if(index < list.length) answerEl.insertBefore(drag.marker, list[index]); else answerEl.appendChild(drag.marker);
+    }
+    function hideMarker(){ if(drag && drag.marker && drag.marker.parentNode) drag.marker.remove(); }
+    function startDrag(){
+      const r = rect(chip);
+      const ghost = chip.cloneNode(true);
+      ghost.classList.remove('dragging'); ghost.classList.add('drag-ghost');
+      ghost.style.width = r.width + 'px';
+      document.body.appendChild(ghost);
       chip.classList.add('dragging');
-      if(chip.setPointerCapture){ try{ chip.setPointerCapture(e.pointerId); }catch(err){} }
+      document.body.classList.add('is-dragging');
+      drag = { ghost, w:r.width, h:r.height, zone:null, index:0, marker:null };
+    }
+    function onMove(ev){
+      if(pid!==undefined && ev.pointerId!==pid) return;
+      if(!drag){
+        if(Math.hypot(ev.clientX-sx, ev.clientY-sy) < 6) return;     // still a tap
+        startDrag();
+      }
+      drag.ghost.style.left = (ev.clientX - drag.w/2) + 'px';
+      drag.ghost.style.top = (ev.clientY - drag.h/2) + 'px';
+      drag.zone = zoneAt(ev.clientX, ev.clientY);
+      if(drag.zone==='answer'){
+        drag.index = wordDropIndex(ev.clientX, ev.clientY, placed().map(rect));
+        showMarker(drag.index);
+      } else hideMarker();
+    }
+    function cleanup(){
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onCancel);
+      if(drag){ hideMarker(); drag.ghost.remove(); chip.classList.remove('dragging'); document.body.classList.remove('is-dragging'); }
+    }
+    function onCancel(){ cleanup(); }
+    function onUp(ev){
+      if(pid!==undefined && ev.pointerId!==pid) return;
+      const d = drag;
+      cleanup();
+      if(!d){                                                              // a tap
+        if(from==='bank') chosen.push(i); else chosen = chosen.filter(x=>x!==i);
+      } else if(from==='bank'){
+        if(d.zone==='answer') chosen.splice(d.index, 0, i);               // else: dropped nowhere, nothing happens
+      } else if(d.zone==='bank'){
+        chosen = chosen.filter(x=>x!==i);
+      } else if(d.zone==='answer'){
+        chosen = chosen.filter(x=>x!==i); chosen.splice(d.index, 0, i);
+      }
+      renderChips();
+    }
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onCancel);
+  }
+
+  if(pick){
+    pick.addEventListener('input', ()=>{
+      const next = wkey(pick.value);
+      if(!next){ buf=''; pick.value=''; renderChips(); return; }
+      const c = candidates(next);
+      if(!c.length){                                   // no remaining word starts like that: ignore the keystroke
+        pick.value = buf; pick.classList.add('nomatch'); setTimeout(()=>pick.classList.remove('nomatch'), 250);
+        return;
+      }
+      buf = next; pick.value = next;
+      if(new Set(c.map(i=>wkeys[i])).size===1) place(c[0]); else renderChips();   // only one distinct word left: take it
     });
-    chip.addEventListener('pointermove', e=>{
-      if(!dragging || !document.elementFromPoint) return;
-      const target = document.elementFromPoint(e.clientX, e.clientY);
-      const targetChip = target && target.closest ? target.closest('.answer-chip') : null;
-      if(targetChip && targetChip!==chip && answerEl.contains(targetChip)){
-        const rect = targetChip.getBoundingClientRect();
-        const before = e.clientX < rect.left + rect.width/2;
-        answerEl.insertBefore(chip, before ? targetChip : targetChip.nextSibling);
-        chosen = Array.from(answerEl.children).map(c=>parseInt(c.dataset.idx,10));
-        syncHidden();
-        moved = true;
+    pick.addEventListener('keydown', e=>{
+      if(e.key==='Backspace' && !pick.value){
+        if(chosen.length){ e.preventDefault(); e.stopPropagation(); chosen.pop(); renderChips(); }
+        return;
+      }
+      if(e.key==='Escape'){ buf=''; pick.value=''; renderChips(); return; }
+      if((e.key==='Enter' || e.key===' ') && buf){      // confirm a word that is also the start of a longer one
+        e.preventDefault(); e.stopPropagation();
+        const exact = candidates(buf).filter(i=>wkeys[i]===buf);
+        if(exact.length) place(exact[0]);
       }
     });
-    const endDrag = ()=>{ dragging = false; chip.classList.remove('dragging'); };
-    chip.addEventListener('pointerup', endDrag);
-    chip.addEventListener('pointercancel', endDrag);
-    chip.addEventListener('click', ()=>{
-      if(moved){ moved = false; return; } // a drag just happened — don't also treat it as a tap
-      returnToBank(i, chip);
-    });
-    return chip;
   }
 
-  function makeBankChip(i){
-    const chip = document.createElement('span');
-    chip.className = 'word-chip';
-    chip.textContent = ex.words[i];
-    chip.dataset.idx = i;
-    chip.addEventListener('click', ()=>{
-      if(chosen.includes(i)) return;
-      chosen.push(i);
-      chip.classList.add('used');
-      answerEl.appendChild(makeAnswerChip(i));
-      syncHidden();
-    });
-    return chip;
-  }
-
-  bank.innerHTML = ''; answerEl.innerHTML = '';
-  ex.words.forEach((w,i)=> bank.appendChild(makeBankChip(i)));
-  syncHidden();
+  renderChips();
+  if(pick && window.matchMedia && matchMedia('(pointer:fine)').matches) pick.focus();   // keyboard users can start typing at once
 }
 
 function wireExercise(){
@@ -2532,7 +2711,8 @@ function wireExercise(){
   if(submitBtn){
     submitBtn.addEventListener('click', ()=>{
       const input = document.getElementById('answerInput');
-      const val = input ? input.value : '';
+      const typed = document.getElementById('typedAnswer');            // word order: the sentence typed instead
+      const val = (typed && typed.value.trim()) ? typed.value : (input ? input.value : '');
       ReviewSession.submit(val);
       render();
     });
@@ -2548,6 +2728,14 @@ function wireExercise(){
       render();
     });
   }
+  const retryBtn = document.getElementById('retryBtn');
+  if(retryBtn) retryBtn.addEventListener('click', ()=>{ ReviewSession.deferRetry(); render(); });
+  const skipBtn = document.getElementById('skipBtn');
+  if(skipBtn) skipBtn.addEventListener('click', ()=>{
+    ReviewSession.continueFromExercise();
+    if(ReviewSession.state.done) ReviewSession.finish();
+    render();
+  });
   const inp = document.getElementById('answerInput');
   if(inp && !st.answered && (ex.type==='fill_blank' || ex.type==='dictation' || ex.type==='error_correction' || ex.type==='production')){
     inp.focus();
@@ -2715,9 +2903,31 @@ function wireAddConceptModal(){
    is showing, or acknowledges an intro/refresher card. Skipped while typing inside a
    textarea (production exercises) so it doesn't fight multi-line input. */
 document.addEventListener('keydown', e=>{
-  if(e.key!=='Enter') return;
   const st = ReviewSession.state;
   if(!st || st.done) return;
+  // Choice exercises: 1-9 pick that option, ↑/↓ move a highlight, Enter confirms the highlighted one.
+  if(!e.ctrlKey && !e.metaKey && !e.altKey && !st.showIntro && !st.showMistakeReview && !st.answered && location.hash.startsWith('#/review')){
+    const tg = e.target, typing = tg && (tg.tagName==='INPUT' || tg.tagName==='TEXTAREA' || tg.isContentEditable);
+    const opts = typing ? [] : Array.from(document.querySelectorAll('#view .option-list .option'));
+    if(opts.length){
+      const cur = opts.findIndex(o=>o.classList.contains('kbd-focus'));
+      if(/^[1-9]$/.test(e.key)){
+        const o = opts[Number(e.key)-1];
+        if(o){ e.preventDefault(); o.click(); }
+        return;
+      }
+      if(e.key==='ArrowDown' || e.key==='ArrowUp'){
+        e.preventDefault();
+        const d = e.key==='ArrowDown' ? 1 : -1;
+        const next = cur<0 ? (d>0 ? 0 : opts.length-1) : (cur+d+opts.length)%opts.length;
+        opts.forEach(o=>o.classList.remove('kbd-focus'));
+        opts[next].classList.add('kbd-focus'); opts[next].scrollIntoView({block:'nearest'});
+        return;
+      }
+      if(e.key==='Enter' && cur>=0){ e.preventDefault(); opts[cur].click(); return; }
+    }
+  }
+  if(e.key!=='Enter') return;
   if(e.target && e.target.tagName==='TEXTAREA') return;
   if(e.target && e.target.closest && e.target.closest('.ai-box, .ai-host')) return;
   if(st.showIntro || st.showMistakeReview){
@@ -2726,7 +2936,7 @@ document.addEventListener('keydown', e=>{
     return;
   }
   if(st.answered){
-    const btn = document.getElementById('continueBtn');
+    const btn = document.getElementById('continueBtn') || document.getElementById('retryBtn');   // Enter = Continue, or Try again after a miss
     if(btn) btn.click();
   } else {
     const btn = document.getElementById('submitAnswer');

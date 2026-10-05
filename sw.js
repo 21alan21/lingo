@@ -1,6 +1,6 @@
 /* Lingua Field service worker.
    Bump VERSION whenever you deploy a new index.html so the precache is refreshed. */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'lingua-field-' + VERSION;
 const RUNTIME = 'lingua-field-runtime';   // Google Fonts (cross-origin), kept across versions
 const CORE = [

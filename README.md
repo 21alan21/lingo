@@ -36,12 +36,12 @@ La clave `ai` (API key de Gemini, modelo y contador de uso) **no entra en ningú
 | Tipo | Qué hace | Modalidad |
 |---|---|---|
 | Multiple choice | Elegir el fragmento que completa una frase | lectura |
-| Fill in the blank | Escribir el fragmento que falta | lectura |
+| Fill in the blank | Escribir el fragmento que falta. Siempre lleva una pista: la `hint` del ejemplo o, si no tiene, el significado del concepto; además la `translation` de la frase si existe y el número de palabras esperado | lectura |
 | Which sentence is correct | Elegir entre la frase correcta y una incorrecta (de `commonMistakes`) | lectura |
 | Meaning choice | Elegir el significado de la expresión (usa `meaning`) | lectura |
 | Expression choice | Elegir la expresión que corresponde a un significado o a un sinónimo (usa `meaning` y `synonyms`) | lectura |
 | Listening | Oír una frase y elegir la expresión | escucha |
-| Word order | Ordenar las palabras de una frase | producción |
+| Word order | Ordenar las palabras de una frase: tocándolas, arrastrándolas (del banco a cualquier posición, reordenando o devolviéndolas) o escribiendo las primeras letras de cada palabra | producción |
 | Error correction | Reescribir correctamente una frase con error | producción |
 | Dictation | Escribir lo que se oye | escucha |
 | Free production | Escribir una frase propia (sin calificar) | producción |
@@ -56,6 +56,26 @@ La dificultad sube por niveles (1 a 4) y nunca retrocede dentro de una sesión. 
 - Si no hay otros conceptos con los que formar las opciones, el ejercicio se sustituye por otro.
 
 **Programación del repaso (SRS).** Al terminar los ejercicios de un concepto en una sesión, se mira el conjunto de sus intentos calificados, no solo el último: hasta un 25 % de fallos cuenta como "good", hasta el 50 % como "hard", más que eso como "again", y terminar fallando siempre es "again". La escritura libre no se califica y no cuenta a favor ni en contra. Las respuestas escritas se comparan sin tener en cuenta mayúsculas, puntuación, apóstrofos curvos o rectos, ni la diferencia entre `n't` y `not` (`wouldn’t`, `wouldn't` y `would not` valen lo mismo). Los acentos sí cuentan.
+
+### Cuando fallas un ejercicio
+
+- **Ves tu respuesta junto a la correcta.** En los ejercicios escritos (completar, dictado, corregir, ordenar), las palabras que difieren se marcan en rojo (tuyas) y en verde (correctas). En los de opciones se resalta la que elegiste y la correcta. Si hay otras respuestas válidas, también se muestran.
+- **El ejercicio fallado vuelve más tarde, no de inmediato.** Al pulsar "Continue" (o Enter) pasas al siguiente y el fallado se reinserta 3 pasos más adelante (`ReviewSession.RETRY_GAP`), o al final de la sesión si quedan menos. Solo cuando no queda nada más vuelve enseguida (el botón dice entonces "Try again"). Reaparece igual, pero con las opciones o fichas en otro orden, hasta que lo aciertas.
+- **La sesión no muestra contador ni barra de progreso**, porque los ejercicios fallados vuelven y el total se movería.
+- **Tras un fallo aparece "Skip"** (sin contador). Saltar cuenta como fallo, y se muestra la tarjeta del concepto como repaso. Así un ejercicio difícil nunca se convierte en un muro. Se ajusta en `ReviewSession.MIN_TRIES_BEFORE_SKIP`.
+- Cada intento fallido cuenta para la maestría y para programar el repaso, pero en tu historial de errores el ejercicio se anota una sola vez.
+- **El resumen de la sesión cuenta todas las respuestas**, también las falladas: `aciertos / respuestas calificadas`. Así la precisión ya no sale siempre al 100 % por haber repetido hasta acertar (la escritura libre no se califica y no cuenta). La app no muestra cuántos intentos te tomó un ejercicio.
+
+### Ejercicios de opciones: teclado
+
+En los ejercicios de elegir (opción múltiple, significado, expresión, frase correcta, escucha) cada opción lleva un número. **1-9** elige esa opción; **↑ / ↓** mueven un resaltado y **Enter** confirma la resaltada. Con las teclas no hace falta usar el ratón.
+
+### Ordenar palabras: teclado y arrastre
+
+- **Tocar:** una palabra del banco pasa al final de la frase; una colocada vuelve al banco.
+- **Arrastrar:** funciona con ratón y con el dedo. Suelta una palabra del banco en cualquier posición de la frase (una barra marca dónde caerá), reordena las ya colocadas o arrástralas de vuelta al banco.
+- **Teclado en las fichas:** Tab para moverte, Enter o espacio para colocar o quitar, y las flechas ← → para mover una ficha colocada.
+- **Escribir las primeras letras:** la caja de texto de debajo selecciona palabras del banco. Escribe la inicial (por ejemplo `s` para *several*); si solo queda una palabra distinta que empiece así, se coloca sola. Si hay varias, sigue escribiendo hasta que solo quede una (las palabras repetidas, como dos *the*, cuentan como una). Si una palabra es el comienzo de otra (*a* y *all*), **Espacio o Enter** coloca la que coincide exacta. **Retroceso** con la caja vacía quita la última palabra colocada y **Esc** borra lo escrito. Se ignoran mayúsculas, acentos y puntuación (`dont` vale para *don't*). Las palabras que coinciden se resaltan. Con Enter y la caja vacía se comprueba la respuesta. La corrección ignora mayúsculas, puntuación y espacios de más.
 
 ### Qué ejercicios salen según el tipo de concepto
 
